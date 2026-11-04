@@ -1,0 +1,29 @@
+{
+  "name": "stet",
+  "private": true,
+  "type": "module",
+  "description": "Local visual regression checks for WordPress sites.",
+  "packageManager": "pnpm@12.4.1",
+  "engines": {
+    "node": ">=24 <27"
+  },
+  "scripts": {
+    "baseline": "playwright test --update-snapshots=all",
+    "verify": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@playwright/test": "1.64.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "7.0.2"
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "24.18.0",
+      "onFail": "download"
+    }
+  }
+}
