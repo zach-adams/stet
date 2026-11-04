@@ -9,11 +9,18 @@ async function settle(page: Page) {
     }
 
     for (let y = 0; y < document.documentElement.scrollHeight; y += innerHeight) {
-      scrollTo(0, y);
+      scrollTo({ top: y, behavior: 'instant' });
       await new Promise(requestAnimationFrame);
     }
 
-    scrollTo(0, 0);
+    // Instant, because a site's smooth scrolling would keep moving the page during capture.
+    scrollTo({ top: 0, behavior: 'instant' });
+  });
+
+  // Scrolling can start forms and embeds that load only when they come into view.
+  await page.waitForLoadState('networkidle');
+
+  await page.evaluate(async () => {
     await document.fonts.ready;
     await Promise.allSettled([...document.images].map((image) => image.decode()));
   });

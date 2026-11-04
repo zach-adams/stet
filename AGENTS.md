@@ -13,4 +13,4 @@ Stet is a local visual regression checker for WordPress sites, built as a thin l
 
 ## Checks
 
-A change is done when `pnpm typecheck` passes and, for anything affecting capture or comparison, `STET_SITE=<name> pnpm verify` gives the expected result on a real local site.
+A change is done when `pnpm typecheck` passes and, for anything affecting capture or comparison, `STET_SITE=<name> pnpm signoff` gives the expected result on a real local site.

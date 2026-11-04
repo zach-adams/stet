@@ -16,7 +16,11 @@ Screenshots stay correct when a refactor changes the DOM, such as replacing a cu
 
 ## Built
 
-Explicit page lists per site, desktop and phone capture, load checks, and references stored outside the repo.
+Explicit page lists per site, load checks, and references stored outside the repo.
+
+Capture uses six common screen sizes. `verify` runs desktop and a 360 phone while editing, and `signoff` runs all six.
+
+Before each capture, Stet scrolls the page instantly, waits for network activity to stop, and hides consent banners with `src/capture.css`. Forms and embeds often load only when they come into view, smooth scrolling keeps moving the page during capture, and banners animate in and float over content.
 
 ## Next, in order
 
@@ -45,6 +49,8 @@ A layout tree verdict, generic DOM matching, an accept command, a custom image c
 ## Known limits
 
 - Screenshots can't see behavior, so a removed `href` passes until scenarios exist. Hover states, open menus and dialogs aren't captured yet either.
+- A page that keeps changing between screenshots fails as unstable. Stet reports that and doesn't work around it, because it can point to a real layout problem.
+- A site that never stops making network requests will time out at the load check.
 - Only Chromium runs today. Playwright's WebKit is useful coverage but isn't branded Safari.
 - Front-end parity can't show that Gutenberg markup is valid or that a setting moved into the editor. Those need separate editor checks.
 - Playwright 1.64.1 fails to read PNGs on Node 27 alpha, so `devEngines` pins Node 24.
