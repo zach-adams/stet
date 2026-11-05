@@ -25,9 +25,9 @@ const sizeNames = sizes.map((size) => size.name).join(', ');
 
 const help = `Stet checks whether a change altered what a local site renders, by comparing it with references saved from a known-good state. AI agents: run \`stet skills get core\` first.
 
-  stet save-references <url> [page ...]   Save how these pages render now, at all six sizes.
+  stet save-references <url> [page ...]   Save how these pages render now, at all seven sizes.
   stet compare <url> [page ...]           Compare with the references at desktop and small-phone, at rest and with hover, focus and closed details open. Never changes references.
-  stet compare <url> --full               Also compare all six sizes, every menu, tab and dialog, and real screenshots, before calling a change done.
+  stet compare <url> --full               Also compare all seven sizes, every menu, tab and dialog, and real screenshots, before calling a change done.
   stet list                               Show sites and pages with references.
   stet skills get core                    Print how to use Stet, written for AI agents.
 

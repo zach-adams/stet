@@ -1,6 +1,7 @@
 import { devices } from '@playwright/test';
 
-// Six common screen sizes. Pixel ratio stays at 1 to keep captures fast.
+// Six common screen sizes, plus a 768 tablet just below WordPress's 782 breakpoint,
+// because none of them falls between 415 and 799. Pixel ratio stays at 1 to keep captures fast.
 function touch(agent: string, width: number, height: number) {
   return {
     ...devices[agent],
@@ -15,6 +16,7 @@ export const sizes = [
   { name: 'desktop', use: { viewport: { width: 1920, height: 1080 } } },
   { name: 'small-desktop', use: { viewport: { width: 1280, height: 720 } } },
   { name: 'tablet', use: touch('Galaxy Tab S9', 800, 1280) },
+  { name: 'small-tablet', use: touch('Galaxy Tab S9', 768, 1024) },
   { name: 'large-phone', use: touch('Pixel 10', 414, 896) },
   { name: 'small-phone', use: touch('Pixel 10', 360, 780) },
 ];

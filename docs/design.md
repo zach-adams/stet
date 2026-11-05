@@ -82,7 +82,7 @@ A site is identified by its URL. `save-references` records the pages and replay 
 
 URL-based commands, a built-in agent guide, the three checks above in every state, third-party saving and blocking, a text report that names changed layers, drawing commands, links, screens and nearby elements, and fixture tests in `tests/`.
 
-Capture uses six common screen sizes. `compare` runs desktop and a 360 phone while editing, with hover, focus and open details. `compare --full` runs all six and drives every control.
+Capture uses six common screen sizes, plus a 768 tablet just below WordPress's 782 breakpoint, where columns stop stacking, because none of those six falls between 415 and 799. `compare` runs desktop and a 360 phone while editing, with hover, focus and open details. `compare --full` runs all seven and drives every control.
 
 ## Next, in order
 

@@ -1,6 +1,6 @@
 # Stet
 
-Stet checks whether a change altered what a local site renders. It compares what each page paints, and what its links and controls say, at rest and in its hover, focus, open and pressed states, with references saved from a known-good state at six screen sizes, so an agent can run it after each edit during a refactor. The name is the proofreading mark for "let it stand".
+Stet checks whether a change altered what a local site renders. It compares what each page paints, and what its links and controls say, at rest and in its hover, focus, open and pressed states, with references saved from a known-good state at seven screen sizes, so an agent can run it after each edit during a refactor. The name is the proofreading mark for "let it stand".
 
 A pass means nothing changed in what Stet captured on the saved pages and sizes. It says nothing about states or pages Stet didn't capture. [docs/design.md](docs/design.md) covers what it decides, its limits and what comes next.
 
@@ -17,9 +17,9 @@ ln -s "$PWD/bin/stet" /opt/homebrew/bin/stet   # or any folder on your PATH
 ## Use
 
 ```bash
-stet save-references https://site.test / /about/   # save these pages at all six sizes, from a known-good site
+stet save-references https://site.test / /about/   # save these pages at all seven sizes, from a known-good site
 stet compare https://site.test                     # every saved page at desktop and a 360 phone, with hover, focus and open details, while editing
-stet compare https://site.test --full              # all six sizes, every control driven, and real screenshots, before calling a change done
+stet compare https://site.test --full              # all seven sizes, every control driven, and real screenshots, before calling a change done
 stet list                                          # sites and pages with references
 stet skills get core                               # the full guide, written for AI agents
 ```
