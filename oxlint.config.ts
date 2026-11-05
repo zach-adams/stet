@@ -9,7 +9,8 @@ export default defineConfig({
   ],
   rules: {
     'oxc/no-accumulating-spread': 'error',
-    'anti-slop/no-array-filter-map': 'error',
+    // Two passes over a page's elements cost nothing, and the flatMap it asks for reads worse.
+    'anti-slop/no-array-filter-map': 'off',
     'anti-slop/no-reduce-accumulator-copy': 'error',
     'anti-slop/no-chained-type-assertions': 'error',
     'anti-slop/no-conditional-empty-object-spread': 'error',
@@ -64,6 +65,7 @@ export default defineConfig({
         'typescript/array-type': ['error', { default: 'array-simple' }],
         'readability/top-level-functions': 'error',
         'readability/type-names': 'error',
+        'readability/no-empty-array-branch': 'error',
       },
     },
     { files: ['src/**/*.ts'], rules: { 'import/no-default-export': 'error' } },

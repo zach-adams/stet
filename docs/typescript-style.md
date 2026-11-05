@@ -12,10 +12,11 @@ The configurations are the source of truth for enforceable conventions:
   within 100 columns by hand.
 - [Oxlint](../oxlint.config.ts) owns code conventions through native rules
   wherever available, alongside the anti-slop rules.
-- [The local plugin](../tools/oxlint/readability.ts) fills three gaps in the
+- [The local plugin](../tools/oxlint/readability.ts) fills four gaps in the
   native rules: top-level function declarations while allowing local closures,
-  PascalCase type names, and statement spacing. It groups short declarations and
-  keeps gaps around control flow.
+  PascalCase type names, statement spacing, and `? [x] : []` in a spread or a
+  `flatMap` callback. It groups short declarations and keeps gaps around control
+  flow.
 
 `tools/oxlint/anti-slop/` is vendored and excluded from both tools.
 [Its provenance](../tools/oxlint/anti-slop/UPSTREAM.md) says how to update it.
@@ -43,6 +44,9 @@ does too much. Review these points:
   explain the decision. Use guard clauses for eligibility checks and `if` or
   `switch` for several outcomes. Preserve short-circuiting around expensive or
   stateful calls.
+- Use `.filter().map()` to keep some items and transform each one. Use a loop
+  with `if` and `push` when a step needs more, such as a computed value, an
+  `await` or an early exit. Use `flatMap` only when one item becomes several.
 - Keep functions focused on one operation. Extract a helper when it names a real
   responsibility, not just to lower a line count.
 - Let TypeScript infer obvious local types. Annotate public contracts and

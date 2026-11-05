@@ -273,11 +273,12 @@ function installWalk() {
       return [...found.values()].sort((a, b) => Number(closes(a)) - Number(closes(b)));
     },
 
-    everythingShown: () => {
-      const elements = [...document.querySelectorAll('body *')].filter(shown);
-
-      return new Map(elements.map((element) => [element, room(element)]));
-    },
+    everythingShown: () =>
+      new Map(
+        [...document.querySelectorAll('body *')]
+          .filter(shown)
+          .map((element) => [element, room(element)]),
+      ),
 
     press(controls) {
       for (const control of controls) {
@@ -328,11 +329,10 @@ function installWalk() {
       const fresh = new Set(
         [...document.querySelectorAll('body *')].filter((element) => appeared(element, before)),
       );
-      const outermost = [...fresh].filter(
-        (element) => !element.parentElement || !fresh.has(element.parentElement),
-      );
-      const measured = outermost.map((element) => element.getBoundingClientRect());
-      const boxes = measured.filter((box) => box.width && box.height);
+      const boxes = [...fresh]
+        .filter((element) => !element.parentElement || !fresh.has(element.parentElement))
+        .map((element) => element.getBoundingClientRect())
+        .filter((box) => box.width && box.height);
       const overlaps = boxes.some((a, index) =>
         boxes
           .slice(index + 1)
@@ -451,11 +451,9 @@ function buildTabRounds() {
 
   const longest = Math.max(0, ...[...lists.values()].map((list) => list.length));
 
-  return Array.from({ length: longest }, (_, index) => {
-    const controls = [...lists.values()].map((list) => list[index]);
-
-    return controls.filter((control) => control !== undefined);
-  });
+  return Array.from({ length: longest }, (_, index) =>
+    [...lists.values()].map((list) => list[index]).filter((control) => control !== undefined),
+  );
 }
 
 /**
@@ -620,13 +618,11 @@ export async function walkStates(
   return {
     pools,
     controls,
-    notDriven: await page.evaluate(() => {
-      const remaining = [...window.stetWalk.found].filter(
-        (element) => !window.stetWalk.driven.has(element),
-      );
-
-      return remaining.map(window.stetWalk.name);
-    }),
+    notDriven: await page.evaluate(() =>
+      [...window.stetWalk.found]
+        .filter((element) => !window.stetWalk.driven.has(element))
+        .map(window.stetWalk.name),
+    ),
   };
 }
 
@@ -645,11 +641,9 @@ export function stateHashes(states: State[]) {
 /** Names the controls, or failing that the smallest elements, at these places on the page. */
 export function namesAt(page: Page, points: Array<{ x: number; y: number }>) {
   return page.evaluate((points) => {
-    const measured = [...document.querySelectorAll('body *')].map((element) => ({
-      element,
-      box: element.getBoundingClientRect(),
-    }));
-    const boxes = measured.filter(({ box }) => box.width && box.height);
+    const boxes = [...document.querySelectorAll('body *')]
+      .map((element) => ({ element, box: element.getBoundingClientRect() }))
+      .filter(({ box }) => box.width && box.height);
     const names = new Set<string>();
 
     for (const { x, y } of points) {
@@ -703,15 +697,18 @@ export async function explainStates(
     } else {
       const text = lineChanges(before.aria.split('\n'), after.aria.split('\n')).slice(0, 8);
       const names = await namesAt(page, changedPoints(before.paint, after.paint));
+      const lines = [`In the state "${after.label}":`];
 
-      changes.push([
-        `In the state "${after.label}":`,
-        ...(names.length ? [`  Near ${names.join(', ')}.`] : []),
-        ...(paintSummary(after.paint) === paintSummary(before.paint)
-          ? []
-          : explainPaint(before.paint, after.paint).map((line) => `  ${line}`)),
-        ...text,
-      ]);
+      if (names.length) {
+        lines.push(`  Near ${names.join(', ')}.`);
+      }
+
+      if (paintSummary(after.paint) !== paintSummary(before.paint)) {
+        lines.push(...explainPaint(before.paint, after.paint).map((line) => `  ${line}`));
+      }
+
+      lines.push(...text);
+      changes.push(lines);
     }
   }
 
@@ -726,8 +723,11 @@ export async function explainStates(
   }
 
   // A change to the whole page shows in every state, and the first few say all there is to say.
-  return [
-    ...changes.slice(0, 3).flat(),
-    ...(changes.length > 3 ? [`${changes.length - 3} more states changed.`] : []),
-  ];
+  const explanation = changes.slice(0, 3).flat();
+
+  if (changes.length > 3) {
+    explanation.push(`${changes.length - 3} more states changed.`);
+  }
+
+  return explanation;
 }

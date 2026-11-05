@@ -275,30 +275,32 @@ function parseLines({ lines }: PaintRecord) {
 export function changedPoints(saved: PaintRecord, now: PaintRecord) {
   const before = parseLines(saved);
   const after = parseLines(now);
+  const points: Array<{ x: number; y: number }> = [];
 
   if (before.length !== after.length) {
-    return [];
+    return points;
   }
 
-  return after.flatMap((layer, index) => {
-    const earlier = before[index];
+  for (const [index, layer] of after.entries()) {
+    const { pixels } = before[index];
 
-    if (layer.pixels === earlier.pixels) {
-      return [];
+    if (layer.pixels === pixels) {
+      continue;
     }
 
     const top = now.tops[layer.stop] ?? 0;
-    const changes = lineChanges(
-      saved.commands[earlier.pixels] ?? [],
-      now.commands[layer.pixels] ?? [],
-    );
+    const changes = lineChanges(saved.commands[pixels] ?? [], now.commands[layer.pixels] ?? []);
 
-    return changes.flatMap((line) => {
+    for (const line of changes) {
       const match = line.match(/(?:at|box) (-?[\d.]+),(-?[\d.]+)/);
 
-      return match ? [{ x: Number(match[1]) + layer.x, y: Number(match[2]) + layer.y + top }] : [];
-    });
-  });
+      if (match) {
+        points.push({ x: Number(match[1]) + layer.x, y: Number(match[2]) + layer.y + top });
+      }
+    }
+  }
+
+  return points;
 }
 
 /**
@@ -343,10 +345,15 @@ export function explainPaint(saved: PaintRecord, now: PaintRecord) {
   });
 
   const [first, ...others] = moved;
+  const explanation = [...lines];
 
-  return [
-    ...lines,
-    ...(first ? [first] : []),
-    ...(others.length ? [`${others.length} more layers moved.`] : []),
-  ];
+  if (first) {
+    explanation.push(first);
+  }
+
+  if (others.length) {
+    explanation.push(`${others.length} more layers moved.`);
+  }
+
+  return explanation;
 }

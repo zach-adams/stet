@@ -267,14 +267,12 @@ async function waitForAssets(page: Page) {
 
   const missing = () =>
     page.evaluate(() => [
-      ...[...document.images].flatMap((image) =>
-        image.checkVisibility() && !(image.complete && image.naturalWidth > 0)
-          ? [`image: ${image.currentSrc || image.src}`]
-          : [],
-      ),
-      ...[...document.fonts].flatMap((font) =>
-        font.status === 'error' ? [`font: ${font.family}`] : [],
-      ),
+      ...[...document.images]
+        .filter((image) => image.checkVisibility() && !(image.complete && image.naturalWidth > 0))
+        .map((image) => `image: ${image.currentSrc || image.src}`),
+      ...[...document.fonts]
+        .filter((font) => font.status === 'error')
+        .map((font) => `font: ${font.family}`),
     ]);
 
   let stillMissing = await missing();

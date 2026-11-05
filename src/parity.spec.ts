@@ -109,10 +109,11 @@ for (const path of run.pages) {
       if (saved && paintSummary(saved.rest) !== paintSummary(rest)) {
         const names = await namesAt(page, changedPoints(saved.rest, rest));
 
-        facts.paint = [
-          ...(names.length ? [`Near ${names.join(', ')}.`] : []),
-          ...explainPaint(saved.rest, rest),
-        ];
+        facts.paint = explainPaint(saved.rest, rest);
+
+        if (names.length) {
+          facts.paint.unshift(`Near ${names.join(', ')}.`);
+        }
       }
 
       facts.videos = rest.lines.filter((line) => line.endsWith(' video')).length;
