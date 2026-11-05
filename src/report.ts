@@ -291,7 +291,7 @@ export default class Report implements Reporter {
 
     if (this.videos) {
       console.log(
-        `Video draws outside the paint record, so videos are compared by size and place, plus their first frame with --full.`,
+        `Video draws outside the paint record, so videos are compared by size and place, plus their first frame with --full. The browser's own video controls are hidden and not compared.`,
       );
     }
 

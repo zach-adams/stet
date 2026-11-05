@@ -45,7 +45,7 @@ Time itself was the last source of variation, and what made waiting necessary:
 - **Timers.** `page.clock` freezes them from before the first script, and running a second of them takes about a millisecond. So a hover menu's delay costs nothing, and how long a request took can't change what a page shows, including where an autoplaying carousel has got to. The clock starts at a fixed date, so scripts that print a date repeat as well.
 - **CSS animations.** `Animation.setPlaybackRate` at 100,000 makes them all reach their end in one frame, including ones `getAnimations()` can't list, such as an opening `details` element's height. Endless ones are cancelled.
 - **Random numbers.** `Math.random` is seeded, because scripts shuffle logos and pick slides.
-- **Video.** `play()` does nothing and autoplay is stopped, so video stays on its first frame. Video draws outside the paint record, so its layer is compared by size and place, and its first frame with `--full`.
+- **Video.** `play()` does nothing and autoplay is stopped, so video stays on its first frame. Video draws outside the paint record, so its layer is compared by size and place, and its first frame with `--full`. The browser's own video controls are hidden, because their buffered bar and loading spinner follow download timing, so a player gaining or losing them isn't noticed.
 
 Chromium's own `Emulation.setVirtualTimePolicy` also fast-forwards timers, and it was tried first. It stops frames while paused, so screenshots hang unless nothing has changed since the last frame, and it can't let a page load while frozen. `page.clock` works in JavaScript and leaves rendering alone.
 

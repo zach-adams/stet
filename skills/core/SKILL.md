@@ -68,7 +68,7 @@ changed: /about/ at desktop
 
 - Never pass `--user-approved` on your own. It replaces references, and an agent that replaces references can approve its own regressions. Ask the user, and use it only for the pages they approved.
 - Use `--allow-live` only when the user asks for a run against a live site.
-- Report what a pass covers. `compare` doesn't drive menus, tabs or dialogs, so say so until `--full` has passed. Neither says anything about pages you didn't save, about form submissions, or about what a report lists as blocked or not driven. `Not driven` names controls Stet found but didn't press.
+- Report what a pass covers. `compare` doesn't drive menus, tabs or dialogs, so say so until `--full` has passed. Neither says anything about pages you didn't save, about form submissions, about the browser's own video controls, which are hidden, or about what a report lists as blocked or not driven. `Not driven` names controls Stet found but didn't press.
 - Stet presses every control it finds, but it can't change the site: it aborts anything other than a GET request and cancels navigation.
 
 ## Third parties

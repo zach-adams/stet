@@ -187,6 +187,13 @@ export async function makeRepeatable(page: Page) {
     Math.random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     // Scripts restart video when it scrolls into view, and any frame but the first varies.
     HTMLMediaElement.prototype.play = () => Promise.resolve();
+
+    // The browser's own video controls show a buffered bar and a loading spinner that follow
+    // download timing.
+    const hideVideoControls = new CSSStyleSheet();
+
+    hideVideoControls.replaceSync('video::-webkit-media-controls { display: none !important }');
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, hideVideoControls];
   });
   await page.clock.install({ time: new Date('2030-01-01T00:00:00Z') });
   await page.clock.pauseAt(new Date('2030-01-01T00:00:01Z'));
