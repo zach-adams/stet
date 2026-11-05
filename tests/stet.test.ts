@@ -320,14 +320,15 @@ test('marks what was removed and what was added the right way round', async () =
   assert.match(output, /\+ text at .*#FF0A151E/);
 });
 
-test('only --full sees a change that happens during compositing', async () => {
+test('fails on opacity the compositor applies, and --full sees it on screen', async () => {
   state = { ...clean, opacity: 0.9 };
 
   const quick = await compare();
   const full = await compare('--full');
 
   state = { ...clean };
-  assert.equal(quick.status, 0, quick.output);
+  assert.equal(quick.status, 1, quick.output);
+  assert.match(quick.output, /is composited with opacity 0\.900, instead of none/);
   assert.equal(full.status, 1, full.output);
   assert.match(full.output, /Screens that differ/);
 });

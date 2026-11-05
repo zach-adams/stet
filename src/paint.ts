@@ -10,6 +10,7 @@ const RECORDED_PAST_SCREEN = 4000;
 
 interface Layer {
   layerId: string;
+  backendNodeId?: number;
   width: number;
   height: number;
   drawsContent: boolean;
@@ -112,6 +113,43 @@ function describeDrawing(log: Command[]) {
   return drawn;
 }
 
+/**
+ * What the compositor applies on top of a layer's own pixels, from the element that owns it and
+ * every element around it. None of it is in the paint record. Runs in the page.
+ */
+function compositedEffects(this: Node) {
+  let opacity = 1;
+  const others: string[] = [];
+
+  for (
+    let element = this instanceof Element ? this : this.parentElement;
+    element;
+    element = element.parentElement
+  ) {
+    const style = getComputedStyle(element);
+
+    opacity *= Number(style.opacity);
+
+    for (const value of [
+      style.filter,
+      style.backdropFilter,
+      style.mixBlendMode,
+      style.clipPath,
+      style.maskImage,
+    ]) {
+      if (value !== 'none' && value !== 'normal') {
+        others.push(value);
+      }
+    }
+  }
+
+  if (opacity !== 1) {
+    others.unshift(`opacity ${opacity.toFixed(3)}`);
+  }
+
+  return others.join(', ');
+}
+
 const NO_PICTURE = /does not produce picture/;
 const LAYER_GONE = /No layer matching given id/;
 
@@ -136,6 +174,8 @@ async function scrollStops(page: Page) {
  */
 export async function paintReader(page: Page) {
   const cdp = await page.context().newCDPSession(page);
+
+  await cdp.send('DOM.enable');
 
   // Subscribing fresh for every read is what guarantees a current list. The list only arrives
   // after a frame commits.
@@ -181,16 +221,33 @@ export async function paintReader(page: Page) {
     };
   };
 
+  // Paint lines are split on spaces, so spaces in the effects become underscores.
+  const effectsOf = async ({ backendNodeId }: Layer) => {
+    if (!backendNodeId) {
+      return '';
+    }
+
+    const { object } = await cdp.send('DOM.resolveNode', { backendNodeId });
+    const { result } = await cdp.send('Runtime.callFunctionOn', {
+      objectId: object.objectId,
+      functionDeclaration: String(compositedEffects),
+      returnByValue: true,
+    });
+
+    return result.value ? ` effects=${String(result.value).replaceAll(' ', '_')}` : '';
+  };
+
   const readStop = async (stop: number, commands: PaintRecord['commands']) => {
     const found: string[] = [];
 
     for (const layer of await readLayers()) {
       const place = `${stop} ${layer.width}x${layer.height} ${(layer.transform ?? []).map((value) => +value.toFixed(2)).join(',')}`;
+      const effects = await effectsOf(layer);
 
       try {
         const { pixels, commands: drawn } = await readLayer(layer);
 
-        found.push(`${place} ${pixels}`);
+        found.push(`${place} ${pixels}${effects}`);
         commands[pixels] = drawn;
       } catch (error) {
         // A playing video draws outside the paint record, so only its size and place can be
@@ -200,7 +257,7 @@ export async function paintReader(page: Page) {
           throw error;
         }
 
-        found.push(`${place} video`);
+        found.push(`${place} video${effects}`);
       }
     }
 
@@ -264,10 +321,18 @@ export function lineChanges(before: string[], after: string[]): string[] {
 
 function parseLines({ lines }: PaintRecord) {
   return lines.map((line) => {
-    const [stop, size, matrix, pixels] = line.split(' ');
+    const [stop, size, matrix, pixels, effects = ''] = line.split(' ');
     const parts = (matrix ?? '').split(',').map(Number);
 
-    return { stop: Number(stop), size, matrix, pixels, x: parts[12] ?? 0, y: parts[13] ?? 0 };
+    return {
+      stop: Number(stop),
+      size,
+      matrix,
+      pixels,
+      effects: effects.replace('effects=', '').replaceAll('_', ' ') || 'none',
+      x: parts[12] ?? 0,
+      y: parts[13] ?? 0,
+    };
   });
 }
 
@@ -322,6 +387,10 @@ export function explainPaint(saved: PaintRecord, now: PaintRecord) {
     const other = after[index];
     const named =
       layer.size === other.size ? `Layer ${layer.size}` : `Layer ${layer.size}, now ${other.size},`;
+
+    if (layer.effects !== other.effects) {
+      lines.add(`${named} is composited with ${other.effects}, instead of ${layer.effects}.`);
+    }
 
     if (layer.matrix !== other.matrix) {
       moved.add(`${named} moved from ${layer.x},${layer.y} to ${other.x},${other.y}.`);

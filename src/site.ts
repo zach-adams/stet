@@ -11,7 +11,7 @@ export interface Run {
    */
   replay?: string;
   saving: boolean;
-  /** Also compare real screenshots, which see compositing effects the paint record can't. */
+  /** Also compare real screenshots, which see how the compositor puts layers together. */
   full: boolean;
 }
 
