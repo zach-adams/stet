@@ -1,15 +1,38 @@
 import { basename, dirname } from 'node:path';
-import type { FullConfig, FullResult, Reporter, Suite, TestCase, TestError, TestResult } from '@playwright/test/reporter';
+import type {
+  FullConfig,
+  FullResult,
+  Reporter,
+  Suite,
+  TestCase,
+  TestError,
+  TestResult,
+} from '@playwright/test/reporter';
 import { run } from './run.ts';
 
 const count = (total: number, noun: string) => `${total} ${noun}${total === 1 ? '' : 's'}`;
-const plain = (error: TestError) => (error.message ?? String(error.value)).replace(/\u001b\[[0-9;]*m/g, '');
-const capped = (lines: string[], limit: number) => (lines.length > limit ? [...lines.slice(0, limit), `  and ${lines.length - limit} more`] : lines);
+const plain = (error: TestError) =>
+  (error.message ?? String(error.value)).replace(/\u001b\[[0-9;]*m/g, '');
+const capped = (lines: string[], limit: number) =>
+  lines.length > limit ? [...lines.slice(0, limit), `  and ${lines.length - limit} more`] : lines;
 
-type Facts = { blocked?: string[]; replayed?: string[]; redirected?: string[]; paint?: string[]; states?: string[]; notDriven?: string[]; videos?: number; gatewayErrors?: number; notCompared?: { right: number; bottom: number } };
+type Facts = {
+  blocked?: string[];
+  replayed?: string[];
+  redirected?: string[];
+  paint?: string[];
+  states?: string[];
+  notDriven?: string[];
+  videos?: number;
+  gatewayErrors?: number;
+  notCompared?: { right: number; bottom: number };
+};
 
 const factsOf = (result: TestResult): Facts =>
-  JSON.parse(result.attachments.find((attachment) => attachment.name === 'stet-facts')?.body?.toString() ?? '{}');
+  JSON.parse(
+    result.attachments.find((attachment) => attachment.name === 'stet-facts')?.body?.toString() ??
+      '{}',
+  );
 
 // One page at one size, read from Playwright's error text. Screens are the numbered reference files.
 function describe(result: TestResult) {
@@ -33,14 +56,19 @@ function describe(result: TestResult) {
     } else if (missing) {
       noReference.push(basename(missing[1]!));
     } else if (snapshot.endsWith('-size.txt')) {
-      const [before, after] = [message.match(/^ {2}-(\S+)/m)?.[1], message.match(/^ {2}\+(\S+)/m)?.[1]];
+      const [before, after] = [
+        message.match(/^ {2}-(\S+)/m)?.[1],
+        message.match(/^ {2}\+(\S+)/m)?.[1],
+      ];
 
       changed = true;
       lines.unshift(`Page size changed from ${before} to ${after}.`);
     } else if (snapshot.endsWith('-aria.txt')) {
       changed = true;
       // Lines of the diff start right after the indent, while unchanged lines start with a space.
-      text.push(...message.split('\n').filter((line) => /^ {2}[-+]/.test(line) && !line.startsWith('  @@')));
+      text.push(
+        ...message.split('\n').filter((line) => /^ {2}[-+]/.test(line) && !line.startsWith('  @@')),
+      );
     } else if (snapshot.endsWith('-paint.txt')) {
       changed = true;
       lines.push(...(factsOf(result).paint ?? ['Painted differently.']));
@@ -52,7 +80,15 @@ function describe(result: TestResult) {
       differ.push(`${screen[1]} (${Number(pixels[1]).toLocaleString('en-US')} pixels)`);
     } else {
       compared = true;
-      lines.push(message.split('\n').filter((line) => line.trim() && !line.startsWith('expect(')).slice(0, 1).join(' ').replace(/^Error: /, '').slice(0, 300));
+      lines.push(
+        message
+          .split('\n')
+          .filter((line) => line.trim() && !line.startsWith('expect('))
+          .slice(0, 1)
+          .join(' ')
+          .replace(/^Error: /, '')
+          .slice(0, 300),
+      );
     }
   }
 
@@ -85,7 +121,9 @@ function describe(result: TestResult) {
   if (gatewayErrors) {
     return {
       label: failed,
-      lines: [`The site answered ${gatewayErrors} requests with a gateway error, so it may be overloaded. Run fewer comparisons at once and try again.`],
+      lines: [
+        `The site answered ${gatewayErrors} requests with a gateway error, so it may be overloaded. Run fewer comparisons at once and try again.`,
+      ],
     };
   }
 
@@ -184,35 +222,54 @@ export default class Report implements Reporter {
     console.log(`\n${counts.join(', ')} in ${Math.round(result.duration / 1000)}s.`);
 
     if (this.blocked.size) {
-      console.log(`Blocked third parties, so not compared: ${[...this.blocked].sort().join(', ')}.`);
+      console.log(
+        `Blocked third parties, so not compared: ${[...this.blocked].sort().join(', ')}.`,
+      );
 
       if (run.saving) {
-        console.log('If one of these draws something the page needs, such as an embedded form, save again with --replay <url pattern>.');
+        console.log(
+          'If one of these draws something the page needs, such as an embedded form, save again with --replay <url pattern>.',
+        );
       }
     }
 
     if (this.redirected.size) {
-      console.log(`Reached through a first-party redirect, so neither blocked nor saved: ${[...this.redirected].sort().join(', ')}.`);
+      console.log(
+        `Reached through a first-party redirect, so neither blocked nor saved: ${[...this.redirected].sort().join(', ')}.`,
+      );
     }
 
     if (this.replayed.size) {
-      console.log(`${run.saving ? 'Saved' : 'Replayed saved'} responses from: ${[...this.replayed].sort().join(', ')}.`);
+      console.log(
+        `${run.saving ? 'Saved' : 'Replayed saved'} responses from: ${[...this.replayed].sort().join(', ')}.`,
+      );
     }
 
     for (const [size, { pages, right, bottom }] of this.wider) {
-      console.log(`At ${size}, ${count(pages, 'page')} ${pages === 1 ? 'is' : 'are'} wider than the screen, so up to ${right}px on the right and ${bottom}px at the bottom appear only in the paint record, not the screenshots.`);
+      console.log(
+        `At ${size}, ${count(pages, 'page')} ${pages === 1 ? 'is' : 'are'} wider than the screen, so up to ${right}px on the right and ${bottom}px at the bottom appear only in the paint record, not the screenshots.`,
+      );
     }
 
     for (const [page, controls] of this.notDriven) {
-      console.log(`Not driven on ${page}, so not compared: ${capped([...controls].map((name) => `"${name}"`), 5).join(', ')}.`);
+      console.log(
+        `Not driven on ${page}, so not compared: ${capped(
+          [...controls].map((name) => `"${name}"`),
+          5,
+        ).join(', ')}.`,
+      );
     }
 
     if (this.videos) {
-      console.log(`Video draws outside the paint record, so videos are compared by size and place, plus their first frame with --full.`);
+      console.log(
+        `Video draws outside the paint record, so videos are compared by size and place, plus their first frame with --full.`,
+      );
     }
 
     if (this.changedPages.size && !run.saving) {
-      console.log(`Fix what changed, or report it. If the user approves it as intended: stet save-references ${run.baseURL} ${[...this.changedPages].join(' ')} --user-approved`);
+      console.log(
+        `Fix what changed, or report it. If the user approves it as intended: stet save-references ${run.baseURL} ${[...this.changedPages].join(' ')} --user-approved`,
+      );
     }
   }
 }

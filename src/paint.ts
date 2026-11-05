@@ -6,7 +6,13 @@ import { drawFrame, measure, scrollAndHold } from './capture.ts';
 // Chromium records paint only this far past the visible area, so longer pages need more than one read.
 const RECORDED_PAST_SCREEN = 4000;
 
-type Layer = { layerId: string; width: number; height: number; drawsContent: boolean; transform?: number[] };
+type Layer = {
+  layerId: string;
+  width: number;
+  height: number;
+  drawsContent: boolean;
+  transform?: number[];
+};
 
 /** What each layer paints and where it sits. The commands behind each one are kept under its pixel hash, only to explain a failure. */
 export type PaintRecord = { lines: string[]; commands: Record<string, string[]>; tops: number[] };
@@ -24,16 +30,22 @@ function describeDrawing(log: Command[]) {
 
   for (const { method, params = {} } of log) {
     const color = params.paint?.color ? ` ${params.paint.color}` : '';
-    const box = (rect: Record<string, number>) => `${round(rect.left! + x)},${round(rect.top! + y)} to ${round(rect.right! + x)},${round(rect.bottom! + y)}`;
+    const box = (rect: Record<string, number>) =>
+      `${round(rect.left! + x)},${round(rect.top! + y)} to ${round(rect.right! + x)},${round(rect.bottom! + y)}`;
 
     if (method === 'save' || method === 'saveLayer') saved.push([x, y]);
     else if (method === 'restore') [x, y] = saved.pop() ?? [0, 0];
     else if (method === 'translate') [x, y] = [x + params.dx, y + params.dy];
     else if (method === 'concat44') [x, y] = [x + params.matrix44[12], y + params.matrix44[13]];
-    else if (method === 'drawTextBlob') drawn.push(`text at ${round(params.x + x)},${round(params.y + y)}${color}`);
-    else if (method === 'drawImageRect') drawn.push(`image ${params.image?.width}x${params.image?.height} at ${box(params.dst)}`);
+    else if (method === 'drawTextBlob')
+      drawn.push(`text at ${round(params.x + x)},${round(params.y + y)}${color}`);
+    else if (method === 'drawImageRect')
+      drawn.push(`image ${params.image?.width}x${params.image?.height} at ${box(params.dst)}`);
     else if (method === 'drawRect') drawn.push(`box ${box(params.rect)}${color}`);
-    else if (method === 'drawRRect') drawn.push(`rounded box ${box(params.rrect)} radius ${round(params.rrect.upperLeftRadius?.xRadius)}${color}`);
+    else if (method === 'drawRRect')
+      drawn.push(
+        `rounded box ${box(params.rrect)} radius ${round(params.rrect.upperLeftRadius?.xRadius)}${color}`,
+      );
     else if (method === 'drawPath') {
       const first = params.path?.pathPoints?.[0]?.points?.[0];
 
@@ -151,7 +163,11 @@ export async function paintReader(page: Page) {
       }
     }
 
-    return { lines: lines.sort((a, b) => a.localeCompare(b, 'en', { numeric: true })), commands, tops: stops };
+    return {
+      lines: lines.sort((a, b) => a.localeCompare(b, 'en', { numeric: true })),
+      commands,
+      tops: stops,
+    };
   };
 }
 
@@ -175,7 +191,14 @@ const parseLines = ({ lines }: PaintRecord) =>
     const [stop, size, matrix, pixels] = line.split(' ');
     const parts = (matrix ?? '').split(',').map(Number);
 
-    return { stop: Number(stop), size, matrix, pixels: pixels!, x: parts[12] ?? 0, y: parts[13] ?? 0 };
+    return {
+      stop: Number(stop),
+      size,
+      matrix,
+      pixels: pixels!,
+      x: parts[12] ?? 0,
+      y: parts[13] ?? 0,
+    };
   });
 
 /** Where on the page drawing changed, to name the elements there. */
@@ -190,10 +213,16 @@ export function changedPoints(saved: PaintRecord, now: PaintRecord) {
   return after.flatMap((layer, index) =>
     layer.pixels === before[index]!.pixels
       ? []
-      : commandChanges(saved.commands[before[index]!.pixels] ?? [], now.commands[layer.pixels] ?? [])
+      : commandChanges(
+          saved.commands[before[index]!.pixels] ?? [],
+          now.commands[layer.pixels] ?? [],
+        )
           .map((line) => line.match(/(?:at|box) (-?[\d.]+),(-?[\d.]+)/))
           .filter((match) => match !== null)
-          .map((match) => ({ x: Number(match[1]) + layer.x, y: Number(match[2]) + layer.y + (now.tops[layer.stop] ?? 0) })),
+          .map((match) => ({
+            x: Number(match[1]) + layer.x,
+            y: Number(match[2]) + layer.y + (now.tops[layer.stop] ?? 0),
+          })),
   );
 }
 
@@ -211,16 +240,22 @@ export function explainPaint(saved: PaintRecord, now: PaintRecord) {
 
   before.forEach((layer, index) => {
     const other = after[index]!;
-    const named = layer.size === other.size ? `Layer ${layer.size}` : `Layer ${layer.size}, now ${other.size},`;
+    const named =
+      layer.size === other.size ? `Layer ${layer.size}` : `Layer ${layer.size}, now ${other.size},`;
 
     if (layer.matrix !== other.matrix) {
       moved.add(`${named} moved from ${layer.x},${layer.y} to ${other.x},${other.y}.`);
     }
 
     if (layer.pixels !== other.pixels) {
-      const changes = commandChanges(saved.commands[layer.pixels] ?? [], now.commands[other.pixels] ?? []);
+      const changes = commandChanges(
+        saved.commands[layer.pixels] ?? [],
+        now.commands[other.pixels] ?? [],
+      );
 
-      lines.add(`${named} painted differently${changes.length ? ':' : '. Its drawing commands match, so the content of a text or image changed.'}`);
+      lines.add(
+        `${named} painted differently${changes.length ? ':' : '. Its drawing commands match, so the content of a text or image changed.'}`,
+      );
       changes.slice(0, 8).forEach((change) => lines.add(change));
 
       if (changes.length > 8) {
@@ -231,5 +266,9 @@ export function explainPaint(saved: PaintRecord, now: PaintRecord) {
 
   const [first, ...others] = moved;
 
-  return [...lines, ...(first ? [first] : []), ...(others.length ? [`${others.length} more layers moved.`] : [])];
+  return [
+    ...lines,
+    ...(first ? [first] : []),
+    ...(others.length ? [`${others.length} more layers moved.`] : []),
+  ];
 }

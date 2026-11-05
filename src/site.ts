@@ -12,7 +12,10 @@ export type Run = {
   full: boolean;
 };
 
-export const stateRoot = join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local/state'), 'stet');
+export const stateRoot = join(
+  process.env.XDG_STATE_HOME ?? join(homedir(), '.local/state'),
+  'stet',
+);
 
 export function siteDirs(baseURL: string) {
   const state = join(stateRoot, new URL(baseURL).host.replace(':', '_'));

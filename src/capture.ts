@@ -8,10 +8,15 @@ const PASSIVE = new Set(['font', 'stylesheet', 'image', 'media']);
 // Third parties change on their own schedule, so every run gets the saved responses or nothing.
 export async function freezeThirdParties(context: BrowserContext, har: string) {
   const site = new URL(run.baseURL);
-  const hosts = { blocked: new Set<string>(), replayed: new Set<string>(), redirected: new Set<string>() };
+  const hosts = {
+    blocked: new Set<string>(),
+    replayed: new Set<string>(),
+    redirected: new Set<string>(),
+  };
   const replay = run.replay ? new RegExp(run.replay) : undefined;
   const hasResponses = run.saving || existsSync(har);
-  const keep = (request: Request) => hasResponses && (PASSIVE.has(request.resourceType()) || Boolean(replay?.test(request.url())));
+  const keep = (request: Request) =>
+    hasResponses && (PASSIVE.has(request.resourceType()) || Boolean(replay?.test(request.url())));
 
   const isThirdParty = (url: URL) => url.protocol.startsWith('http') && url.origin !== site.origin;
   const url = (request: Request) => new URL(request.url());
@@ -53,11 +58,15 @@ export async function freezeThirdParties(context: BrowserContext, har: string) {
   });
 
   if (hasResponses) {
-    const thirdParty = new RegExp(`^(?!${site.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:/|$))https?://`);
+    const thirdParty = new RegExp(
+      `^(?!${site.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:/|$))https?://`,
+    );
 
     await context.routeFromHAR(
       har,
-      run.saving ? { url: thirdParty, update: true, updateContent: 'attach' } : { url: thirdParty, notFound: 'abort' },
+      run.saving
+        ? { url: thirdParty, update: true, updateContent: 'attach' }
+        : { url: thirdParty, notFound: 'abort' },
     );
   }
 
@@ -99,7 +108,12 @@ let workerHasLoaded = false;
  * Opens a page without overloading the server. Two local sites answered 502 at six full page loads at once and never at four. Reading paint needs no server,
  * so only the first load of each worker is staggered. Later ones spread out on their own, and retrying covers the rest.
  */
-export async function openPage(page: Page, path: string, gatewayErrors: GatewayErrors, worker: number) {
+export async function openPage(
+  page: Page,
+  path: string,
+  gatewayErrors: GatewayErrors,
+  worker: number,
+) {
   if (!workerHasLoaded) {
     workerHasLoaded = true;
     await new Promise((resolve) => setTimeout(resolve, worker * 500));
@@ -121,7 +135,10 @@ export async function openPage(page: Page, path: string, gatewayErrors: GatewayE
 }
 
 export function expectNoGatewayErrors(gatewayErrors: GatewayErrors) {
-  expect(gatewayErrors.count(), `The site answered ${gatewayErrors.count()} requests with a gateway error, so it may be overloaded. Run fewer comparisons at once and try again.`).toBe(0);
+  expect(
+    gatewayErrors.count(),
+    `The site answered ${gatewayErrors.count()} requests with a gateway error, so it may be overloaded. Run fewer comparisons at once and try again.`,
+  ).toBe(0);
 }
 
 const requests = new WeakMap<Page, { pending: Set<Request>; started: boolean }>();
@@ -177,7 +194,8 @@ async function requestsDone(page: Page) {
 }
 
 // Use Playwright's capture here, because a raw Page.captureScreenshot with a clip changes the layout on emulated phones.
-export const drawFrame = (page: Page) => page.screenshot({ type: 'jpeg', quality: 1, clip: { x: 0, y: 0, width: 1, height: 1 } });
+export const drawFrame = (page: Page) =>
+  page.screenshot({ type: 'jpeg', quality: 1, clip: { x: 0, y: 0, width: 1, height: 1 } });
 
 // A blank image or fallback font must fail here instead of passing as a stable capture.
 async function loadEverything(page: Page, gatewayErrors: GatewayErrors) {
@@ -240,7 +258,10 @@ async function loadEverything(page: Page, gatewayErrors: GatewayErrors) {
     stillMissing = await missing();
   }
 
-  expect(stillMissing, `${new URL(page.url()).pathname} didn't finish loading: ${stillMissing.join(', ')}`).toEqual([]);
+  expect(
+    stillMissing,
+    `${new URL(page.url()).pathname} didn't finish loading: ${stillMissing.join(', ')}`,
+  ).toEqual([]);
 
   // Autoplay needs stopping too. A video with nothing loaded has nothing to seek, and one that won't finish seeking fails as unstable later.
   await Promise.race([
@@ -250,10 +271,12 @@ async function loadEverything(page: Page, gatewayErrors: GatewayErrors) {
           video.autoplay = false;
           video.pause();
 
-          return video.readyState === 0 ? undefined : new Promise((resolve) => {
-            video.addEventListener('seeked', resolve, { once: true });
-            video.currentTime = 0;
-          });
+          return video.readyState === 0
+            ? undefined
+            : new Promise((resolve) => {
+                video.addEventListener('seeked', resolve, { once: true });
+                video.currentTime = 0;
+              });
         }),
       ),
     ),
@@ -330,7 +353,12 @@ export async function scrollAndHold(page: Page, top: number) {
     await scrollAndWait();
   }
 
-  const { y, panned, height, last } = await page.evaluate(() => ({ y: scrollY, panned: visualViewport!.offsetTop, height: document.documentElement.scrollHeight, last: document.documentElement.scrollHeight - innerHeight }));
+  const { y, panned, height, last } = await page.evaluate(() => ({
+    y: scrollY,
+    panned: visualViewport!.offsetTop,
+    height: document.documentElement.scrollHeight,
+    last: document.documentElement.scrollHeight - innerHeight,
+  }));
 
   // A page can get shorter as it scrolls, which makes a stop near the bottom land on the new bottom.
   expect(

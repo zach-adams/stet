@@ -1,5 +1,13 @@
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { siteDirs, stateRoot, type Run } from './site.ts';
@@ -68,7 +76,7 @@ function lockIsHeld(lock: string) {
 function waitForTurn(lock: string) {
   mkdirSync(dirname(lock), { recursive: true });
 
-  for (let told = false; ; ) {
+  for (let told = false; ;) {
     try {
       writeFileSync(lock, String(process.pid), { flag: 'wx' });
       process.on('exit', () => rmSync(lock, { force: true }));
@@ -109,7 +117,9 @@ function skills(args: string[]) {
 
 function list() {
   const sites = existsSync(stateRoot) ? readdirSync(stateRoot) : [];
-  const manifests = sites.map((site) => readManifest(join(stateRoot, site, 'site.json'))).filter((manifest) => manifest !== undefined);
+  const manifests = sites
+    .map((site) => readManifest(join(stateRoot, site, 'site.json')))
+    .filter((manifest) => manifest !== undefined);
 
   if (!manifests.length) {
     console.log('No site has references yet.');
@@ -143,7 +153,9 @@ if (command !== 'compare' && command !== 'save-references') {
 }
 
 if (!address || !URL.canParse(address)) {
-  refuse(`Give the site's full URL after the command, as in: stet ${command} https://example.test /about/`);
+  refuse(
+    `Give the site's full URL after the command, as in: stet ${command} https://example.test /about/`,
+  );
 }
 
 if (values.size && !sizes.some((size) => size.name === values.size)) {
@@ -160,8 +172,15 @@ if (values.replay) {
 
 const site = new URL(address);
 
-if (!values['allow-live'] && !/^(localhost|127\.0\.0\.1|\[::1\])$|\.(local|test|localhost|ddev\.site|lndo\.site)$/.test(site.hostname)) {
-  refuse(`${site.hostname} doesn't look like a local site. Use a live site only when the user asks for that run, then add --allow-live.`);
+if (
+  !values['allow-live'] &&
+  !/^(localhost|127\.0\.0\.1|\[::1\])$|\.(local|test|localhost|ddev\.site|lndo\.site)$/.test(
+    site.hostname,
+  )
+) {
+  refuse(
+    `${site.hostname} doesn't look like a local site. Use a live site only when the user asks for that run, then add --allow-live.`,
+  );
 }
 
 const pageOf = (page: string) => {
@@ -179,10 +198,16 @@ const dirs = siteDirs(site.origin);
 waitForTurn(join(dirs.state, 'run.lock'));
 
 const manifest = readManifest(dirs.manifest);
-const named = rest.length ? rest.map(pageOf) : site.pathname + site.search === '/' ? [] : [pageOf(address)];
+const named = rest.length
+  ? rest.map(pageOf)
+  : site.pathname + site.search === '/'
+    ? []
+    : [pageOf(address)];
 
 if (command === 'compare' && !manifest) {
-  refuse(`${site.origin} has no references yet. Once the user confirms the site is in a known-good state, run: stet save-references ${site.origin} <page> ...`);
+  refuse(
+    `${site.origin} has no references yet. Once the user confirms the site is in a known-good state, run: stet save-references ${site.origin} <page> ...`,
+  );
 }
 
 const saving = command === 'save-references';
@@ -192,7 +217,9 @@ if (saving && !values['user-approved']) {
   const existing = pages.filter((page) => manifest?.pages.includes(page));
 
   if (existing.length) {
-    refuse(`${existing.join(' ')} already ${existing.length === 1 ? 'has' : 'have'} references. Replacing them would hide any regression made since they were saved, so ask the user first. Once they approve, rerun with --user-approved.`);
+    refuse(
+      `${existing.join(' ')} already ${existing.length === 1 ? 'has' : 'have'} references. Replacing them would hide any regression made since they were saved, so ask the user first. Once they approve, rerun with --user-approved.`,
+    );
   }
 }
 
@@ -200,12 +227,17 @@ if (!saving) {
   const unknown = pages.filter((page) => !manifest!.pages.includes(page));
 
   if (unknown.length) {
-    refuse(`${unknown.join(' ')} ${unknown.length === 1 ? 'has' : 'have'} no references. Once the user confirms ${unknown.length === 1 ? 'it is' : 'they are'} in a known-good state, run: stet save-references ${site.origin} ${unknown.join(' ')}`);
+    refuse(
+      `${unknown.join(' ')} ${unknown.length === 1 ? 'has' : 'have'} no references. Once the user confirms ${unknown.length === 1 ? 'it is' : 'they are'} in a known-good state, run: stet save-references ${site.origin} ${unknown.join(' ')}`,
+    );
   }
 }
 
 // Patterns add up, because replacing one would block what other saved pages recorded under it.
-const replay = values.replay && manifest?.replay && manifest.replay !== values.replay ? `${manifest.replay}|${values.replay}` : (values.replay ?? manifest?.replay);
+const replay =
+  values.replay && manifest?.replay && manifest.replay !== values.replay
+    ? `${manifest.replay}|${values.replay}`
+    : (values.replay ?? manifest?.replay);
 const run: Run = { baseURL: site.origin, pages, replay, saving, full: Boolean(values.full) };
 const args = ['test'];
 

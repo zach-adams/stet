@@ -34,7 +34,11 @@ async function forcer(page: Page, cdp: CDPSession) {
   const set = async (selector: string, classes: string[]) => {
     const { nodeIds } = await cdp.send('DOM.querySelectorAll', { nodeId: root.nodeId, selector });
 
-    await Promise.all(nodeIds.map((nodeId) => cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: classes })));
+    await Promise.all(
+      nodeIds.map((nodeId) =>
+        cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: classes }),
+      ),
+    );
 
     return nodeIds.length;
   };
@@ -98,26 +102,39 @@ declare global {
 
 function installWalk() {
   // Pressing things must not leave the page.
-  (window as unknown as { navigation: EventTarget }).navigation.addEventListener('navigate', (event) => {
-    if (event.cancelable) {
-      event.preventDefault();
-    }
-  });
+  (window as unknown as { navigation: EventTarget }).navigation.addEventListener(
+    'navigate',
+    (event) => {
+      if (event.cancelable) {
+        event.preventDefault();
+      }
+    },
+  );
 
   window.open = () => null;
 
   const HOVERS = ['mouseenter', 'mouseover', 'pointerenter'];
-  const LEAVES: Record<string, string> = { mouseenter: 'mouseleave', mouseover: 'mouseout', pointerenter: 'pointerleave' };
-  const shown = (element: Element) => element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+  const LEAVES: Record<string, string> = {
+    mouseenter: 'mouseleave',
+    mouseover: 'mouseout',
+    pointerenter: 'pointerleave',
+  };
+  const shown = (element: Element) =>
+    element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
   const room = (element: Element) => {
     const box = element.getBoundingClientRect();
 
     return box.width * box.height;
   };
   // A panel collapsed with height 0 counts as visible, along with everything inside it, so it has to be judged by the room it took up.
-  const appeared = (element: Element, before: Shown) => shown(element) && !before.get(element) && room(element) > 0;
+  const appeared = (element: Element, before: Shown) =>
+    shown(element) && !before.get(element) && room(element) > 0;
   const appearedInside = (element: Element, before: Shown) => {
-    for (let current: Element | null = element; current && current !== document.body; current = current.parentElement) {
+    for (
+      let current: Element | null = element;
+      current && current !== document.body;
+      current = current.parentElement
+    ) {
       if (appeared(current, before)) {
         return true;
       }
@@ -126,14 +143,31 @@ function installWalk() {
     return false;
   };
   const name = (element: Element) =>
-    (element.getAttribute('aria-label') || element.textContent || element.getAttribute('title') || element.querySelector('img')?.alt || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+    (
+      element.getAttribute('aria-label') ||
+      element.textContent ||
+      element.getAttribute('title') ||
+      element.querySelector('img')?.alt ||
+      ''
+    )
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 40);
   const fire = (control: Control, type: string) =>
-    control.element.dispatchEvent(new MouseEvent(type, { bubbles: control.how === 'mouseover', cancelable: true, view: window }));
+    control.element.dispatchEvent(
+      new MouseEvent(type, {
+        bubbles: control.how === 'mouseover',
+        cancelable: true,
+        view: window,
+      }),
+    );
   // Links that go somewhere and form fields do what their markup says, and pressing one wouldn't reveal anything to compare.
   const leavesThePage = (element: Element) =>
     element.matches('[type=submit],[type=reset],input,select,textarea') ||
     (element instanceof HTMLButtonElement && Boolean(element.form) && element.type === 'submit') ||
-    (element instanceof HTMLAnchorElement && !/^#|^$/.test(element.getAttribute('href') ?? '') && !element.matches('[role=tab],[aria-expanded],[aria-controls]'));
+    (element instanceof HTMLAnchorElement &&
+      !/^#|^$/.test(element.getAttribute('href') ?? '') &&
+      !element.matches('[role=tab],[aria-expanded],[aria-controls]'));
 
   window.stetWalk = {
     listening: new Map(),
@@ -146,7 +180,12 @@ function installWalk() {
     controls(before) {
       const found = new Map<Element, Control>();
       const add = (element: Element, how: string, kind: string) => {
-        const usable = shown(element) && !element.matches('html,body,[disabled]') && !element.closest('[inert]') && !this.driven.has(element) && (!before || appearedInside(element, before));
+        const usable =
+          shown(element) &&
+          !element.matches('html,body,[disabled]') &&
+          !element.closest('[inert]') &&
+          !this.driven.has(element) &&
+          (!before || appearedInside(element, before));
 
         if (usable && !found.has(element) && (how !== 'click' || !leavesThePage(element))) {
           found.set(element, { element: element as HTMLElement, how, kind, name: name(element) });
@@ -158,11 +197,22 @@ function installWalk() {
       document.querySelectorAll('[role=tab]').forEach((element) => add(element, 'click', 'tab'));
       document.querySelectorAll('[aria-expanded="false"],[aria-controls]').forEach((element) => {
         // Some menus put aria-expanded on a list item and open on hover, which clicking it wouldn't do.
-        if (element.matches('button,summary,a,[role=button],[tabindex]') || this.listening.get(element)?.has('click')) {
-          add(element, 'click', element.getAttribute('aria-expanded') === 'false' ? 'disclosure' : 'control');
+        if (
+          element.matches('button,summary,a,[role=button],[tabindex]') ||
+          this.listening.get(element)?.has('click')
+        ) {
+          add(
+            element,
+            'click',
+            element.getAttribute('aria-expanded') === 'false' ? 'disclosure' : 'control',
+          );
         }
       });
-      document.querySelectorAll('[popovertarget],[commandfor],[aria-haspopup=dialog],[data-bs-toggle],[data-toggle]').forEach((element) => add(element, 'click', 'control'));
+      document
+        .querySelectorAll(
+          '[popovertarget],[commandfor],[aria-haspopup=dialog],[data-bs-toggle],[data-toggle]',
+        )
+        .forEach((element) => add(element, 'click', 'control'));
 
       for (const [element, types] of this.listening) {
         const hover = HOVERS.find((type) => types.has(type));
@@ -178,12 +228,18 @@ function installWalk() {
 
       // Pressing Close first would hide everything else that was just revealed.
       const closes = ({ element, name }: Control) =>
-        element.matches('[command=close],[command=hide-popover],[popovertargetaction=hide]') || /^(close|dismiss|cancel)\b/i.test(name);
+        element.matches('[command=close],[command=hide-popover],[popovertargetaction=hide]') ||
+        /^(close|dismiss|cancel)\b/i.test(name);
 
       return [...found.values()].sort((a, b) => Number(closes(a)) - Number(closes(b)));
     },
 
-    everythingShown: () => new Map([...document.querySelectorAll('body *')].filter(shown).map((element) => [element, room(element)])),
+    everythingShown: () =>
+      new Map(
+        [...document.querySelectorAll('body *')]
+          .filter(shown)
+          .map((element) => [element, room(element)]),
+      ),
 
     press(controls) {
       for (const control of controls) {
@@ -200,7 +256,10 @@ function installWalk() {
       for (const control of controls) {
         if (LEAVES[control.how]) {
           fire(control, LEAVES[control.how]!);
-        } else if (control.element.getAttribute('aria-expanded') === 'true' || (control.kind === 'details' && control.element.closest('details')?.open)) {
+        } else if (
+          control.element.getAttribute('aria-expanded') === 'true' ||
+          (control.kind === 'details' && control.element.closest('details')?.open)
+        ) {
           control.element.click();
         }
       }
@@ -219,47 +278,82 @@ function installWalk() {
 
     // Controls share a read only if they all stayed on and what they revealed doesn't overlap, because one could hide another.
     holdTogether(controls, before) {
-      const on = controls.every((control) => control.element.getAttribute('aria-expanded') !== 'false' && control.element.getAttribute('aria-selected') !== 'false');
-      const fresh = new Set([...document.querySelectorAll('body *')].filter((element) => appeared(element, before)));
+      const on = controls.every(
+        (control) =>
+          control.element.getAttribute('aria-expanded') !== 'false' &&
+          control.element.getAttribute('aria-selected') !== 'false',
+      );
+      const fresh = new Set(
+        [...document.querySelectorAll('body *')].filter((element) => appeared(element, before)),
+      );
       const boxes = [...fresh]
         .filter((element) => !fresh.has(element.parentElement!))
         .map((element) => element.getBoundingClientRect())
         .filter((box) => box.width && box.height);
-      const overlaps = boxes.some((a, index) => boxes.slice(index + 1).some((b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom));
+      const overlaps = boxes.some((a, index) =>
+        boxes
+          .slice(index + 1)
+          .some(
+            (b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom,
+          ),
+      );
 
       return on && !overlaps;
     },
 
     revealedControls: (before) =>
-      [...document.querySelectorAll('a[href],button,summary,input:not([type=hidden]),select,textarea')].some((element) => shown(element) && appearedInside(element, before)),
+      [
+        ...document.querySelectorAll(
+          'a[href],button,summary,input:not([type=hidden]),select,textarea',
+        ),
+      ].some((element) => shown(element) && appearedInside(element, before)),
   };
 }
 
 // One call lists every listener on the page, which finds controls that have no ARIA at all.
 async function findListeners(page: Page, cdp: CDPSession) {
   const { result } = await cdp.send('Runtime.evaluate', { expression: 'document.documentElement' });
-  const { listeners } = await cdp.send('DOMDebugger.getEventListeners', { objectId: result.objectId!, depth: -1, pierce: true });
+  const { listeners } = await cdp.send('DOMDebugger.getEventListeners', {
+    objectId: result.objectId!,
+    depth: -1,
+    pierce: true,
+  });
 
-  for (const listener of listeners.filter(({ type, backendNodeId }) => ['click', 'mouseenter', 'mouseover', 'pointerenter'].includes(type) && backendNodeId)) {
-    const { object } = await cdp.send('DOM.resolveNode', { backendNodeId: listener.backendNodeId! });
+  for (const listener of listeners.filter(
+    ({ type, backendNodeId }) =>
+      ['click', 'mouseenter', 'mouseover', 'pointerenter'].includes(type) && backendNodeId,
+  )) {
+    const { object } = await cdp.send('DOM.resolveNode', {
+      backendNodeId: listener.backendNodeId!,
+    });
 
     await cdp.send('Runtime.callFunctionOn', {
       objectId: object.objectId!,
-      functionDeclaration: 'function (type) { if (this.nodeType === 1) { const seen = window.stetWalk.listening; seen.set(this, (seen.get(this) ?? new Set()).add(type)); } }',
+      functionDeclaration:
+        'function (type) { if (this.nodeType === 1) { const seen = window.stetWalk.listening; seen.set(this, (seen.get(this) ?? new Set()).add(type)); } }',
       arguments: [{ value: listener.type }],
     });
   }
 }
 
 /** Puts the page into every state it can reach and reads each one. Timers run only when told to, so nothing here waits on the real clock. */
-export async function walkStates(page: Page, readPaint: () => Promise<PaintRecord>, driveControls: boolean) {
+export async function walkStates(
+  page: Page,
+  readPaint: () => Promise<PaintRecord>,
+  driveControls: boolean,
+) {
   const cdp = await page.context().newCDPSession(page);
   const pools: State[] = [];
   const controls: State[] = [];
   let reads = 0;
 
   const read = async (into: State[], label: string) => {
-    into.push({ label, group: into === pools ? 'pool' : 'control', paint: await readPaint(), aria: `${await page.locator('body').ariaSnapshot()}\n` });
+    into.push({
+      label,
+      group: into === pools ? 'pool' : 'control',
+      paint: await readPaint(),
+      aria: `${await page.locator('body').ariaSnapshot()}\n`,
+    });
   };
 
   await cdp.send('DOM.enable');
@@ -274,7 +368,9 @@ export async function walkStates(page: Page, readPaint: () => Promise<PaintRecor
     let total = 0;
 
     for (let closed = 1; closed; total += closed) {
-      const summaries = [...document.querySelectorAll('details:not([open]) > summary')].filter((summary) => window.stetWalk.shown(summary)) as HTMLElement[];
+      const summaries = [...document.querySelectorAll('details:not([open]) > summary')].filter(
+        (summary) => window.stetWalk.shown(summary),
+      ) as HTMLElement[];
 
       closed = summaries.length;
 
@@ -310,7 +406,9 @@ export async function walkStates(page: Page, readPaint: () => Promise<PaintRecor
 
   const close = async () => {
     await page.evaluate(() => {
-      for (const details of document.querySelectorAll<HTMLDetailsElement>('details[data-stet-name]')) {
+      for (const details of document.querySelectorAll<HTMLDetailsElement>(
+        'details[data-stet-name]',
+      )) {
         details.open = false;
         details.name = details.dataset.stetName!;
         delete details.dataset.stetName;
@@ -335,14 +433,18 @@ export async function walkStates(page: Page, readPaint: () => Promise<PaintRecor
   };
 
   const drive = async (group: JSHandle<Control[]>) => {
-    const facts = await group.evaluate((list) => list.map(({ how, kind, name }) => ({ how, kind, name })));
+    const facts = await group.evaluate((list) =>
+      list.map(({ how, kind, name }) => ({ how, kind, name })),
+    );
 
     if (!facts.length || reads >= MOST_CONTROL_READS) {
       return;
     }
 
     const before = await page.evaluateHandle(() => window.stetWalk.everythingShown());
-    const openBefore = await page.evaluateHandle(() => new Set(document.querySelectorAll('dialog[open],[popover]:popover-open')));
+    const openBefore = await page.evaluateHandle(
+      () => new Set(document.querySelectorAll('dialog[open],[popover]:popover-open')),
+    );
     const release = async () => {
       await group.evaluate((list, open) => window.stetWalk.release(list, open), openBefore);
       await settle(page);
@@ -351,7 +453,13 @@ export async function walkStates(page: Page, readPaint: () => Promise<PaintRecor
     await group.evaluate((list) => window.stetWalk.press(list));
     await settle(page);
 
-    if (facts.length > 1 && !(await group.evaluate((list, shownBefore) => window.stetWalk.holdTogether(list, shownBefore), before))) {
+    if (
+      facts.length > 1 &&
+      !(await group.evaluate(
+        (list, shownBefore) => window.stetWalk.holdTogether(list, shownBefore),
+        before,
+      ))
+    ) {
       const half = Math.ceil(facts.length / 2);
 
       await release();
@@ -366,9 +474,13 @@ export async function walkStates(page: Page, readPaint: () => Promise<PaintRecor
     reads++;
     await read(controls, label);
     // Counted only once read, so a control the read limit cuts off is reported as not driven.
-    await group.evaluate((list) => list.forEach(({ element }) => window.stetWalk.driven.add(element)));
+    await group.evaluate((list) =>
+      list.forEach(({ element }) => window.stetWalk.driven.add(element)),
+    );
 
-    if (await page.evaluate((shownBefore) => window.stetWalk.revealedControls(shownBefore), before)) {
+    if (
+      await page.evaluate((shownBefore) => window.stetWalk.revealedControls(shownBefore), before)
+    ) {
       reads++;
       await forced.apply(POOLS.hover!);
       await settle(page);
@@ -383,10 +495,17 @@ export async function walkStates(page: Page, readPaint: () => Promise<PaintRecor
 
   const explore = async (before?: JSHandle<Shown>) => {
     while (reads < MOST_CONTROL_READS) {
-      const pending = await page.evaluateHandle((before) => window.stetWalk.controls(before), before);
-      const disclosures = await pending.evaluateHandle((list) => list.filter(({ kind }) => kind === 'disclosure'));
+      const pending = await page.evaluateHandle(
+        (before) => window.stetWalk.controls(before),
+        before,
+      );
+      const disclosures = await pending.evaluateHandle((list) =>
+        list.filter(({ kind }) => kind === 'disclosure'),
+      );
       const hasDisclosures = await disclosures.evaluate((list) => list.length > 0);
-      const next = hasDisclosures ? disclosures : await pending.evaluateHandle((list) => list.slice(0, 1));
+      const next = hasDisclosures
+        ? disclosures
+        : await pending.evaluateHandle((list) => list.slice(0, 1));
 
       if (!(await next.evaluate((list) => list.length))) {
         return;
@@ -412,7 +531,9 @@ export async function walkStates(page: Page, readPaint: () => Promise<PaintRecor
 
     const longest = Math.max(0, ...[...lists.values()].map((list) => list.length));
 
-    return Array.from({ length: longest }, (_, index) => [...lists.values()].map((list) => list[index]).filter((control) => control !== undefined));
+    return Array.from({ length: longest }, (_, index) =>
+      [...lists.values()].map((list) => list[index]).filter((control) => control !== undefined),
+    );
   });
 
   for (let round = 0; round < (await rounds.evaluate((all) => all.length)); round++) {
@@ -424,10 +545,19 @@ export async function walkStates(page: Page, readPaint: () => Promise<PaintRecor
   await settle(page);
   await explore();
 
-  return { pools, controls, notDriven: await page.evaluate(() => [...window.stetWalk.found].filter((element) => !window.stetWalk.driven.has(element)).map(window.stetWalk.name)) };
+  return {
+    pools,
+    controls,
+    notDriven: await page.evaluate(() =>
+      [...window.stetWalk.found]
+        .filter((element) => !window.stetWalk.driven.has(element))
+        .map(window.stetWalk.name),
+    ),
+  };
 }
 
-const stateHash = ({ paint, aria }: State) => createHash('sha1').update(paintSummary(paint)).update(aria).digest('hex');
+const stateHash = ({ paint, aria }: State) =>
+  createHash('sha1').update(paintSummary(paint)).update(aria).digest('hex');
 
 /** The verdict for a set of states, in an order that doesn't depend on how the markup lists its controls. */
 export const stateHashes = (states: State[]) => `${states.map(stateHash).sort().join('\n')}\n`;
@@ -435,17 +565,31 @@ export const stateHashes = (states: State[]) => `${states.map(stateHash).sort().
 /** Names the controls, or failing that the smallest elements, at these places on the page. */
 export function namesAt(page: Page, points: { x: number; y: number }[]) {
   return page.evaluate((points) => {
-    const boxes = [...document.querySelectorAll('body *')].map((element) => ({ element, box: element.getBoundingClientRect() })).filter(({ box }) => box.width && box.height);
+    const boxes = [...document.querySelectorAll('body *')]
+      .map((element) => ({ element, box: element.getBoundingClientRect() }))
+      .filter(({ box }) => box.width && box.height);
     const names = new Set<string>();
 
     for (const { x, y } of points) {
       const smallest = boxes
-        .filter(({ box }) => x >= box.left + scrollX && x <= box.right + scrollX && y >= box.top + scrollY && y <= box.bottom + scrollY)
+        .filter(
+          ({ box }) =>
+            x >= box.left + scrollX &&
+            x <= box.right + scrollX &&
+            y >= box.top + scrollY &&
+            y <= box.bottom + scrollY,
+        )
         .sort((a, b) => a.box.width * a.box.height - b.box.width * b.box.height)[0]?.element;
 
       if (smallest) {
-        const named = smallest.closest('a,button,summary,input,select,textarea,[role=button],[role=tab],h1,h2,h3,h4,h5,h6,li,p,figure') ?? smallest;
-        const text = (named.getAttribute('aria-label') || named.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+        const named =
+          smallest.closest(
+            'a,button,summary,input,select,textarea,[role=button],[role=tab],h1,h2,h3,h4,h5,h6,li,p,figure',
+          ) ?? smallest;
+        const text = (named.getAttribute('aria-label') || named.textContent || '')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 40);
 
         names.add(`${named.tagName.toLowerCase()} "${text}"`);
       }
@@ -456,7 +600,12 @@ export function namesAt(page: Page, points: { x: number; y: number }[]) {
 }
 
 /** Say which states differ. This only explains. The comparison of the hashes decides. */
-export async function explainStates(page: Page, saved: { rest: PaintRecord; states: State[] }, now: State[], rest: PaintRecord) {
+export async function explainStates(
+  page: Page,
+  saved: { rest: PaintRecord; states: State[] },
+  now: State[],
+  rest: PaintRecord,
+) {
   const savedHashes = new Set(saved.states.map(stateHash));
   const nowHashes = new Set(now.map(stateHash));
   const changes: string[][] = [];
@@ -466,26 +615,40 @@ export async function explainStates(page: Page, saved: { rest: PaintRecord; stat
 
     if (!after) {
       changes.push([`The state "${before.label}" is gone.`]);
-    } else if (paintSummary(after.paint) === paintSummary(rest) && paintSummary(before.paint) !== paintSummary(saved.rest)) {
+    } else if (
+      paintSummary(after.paint) === paintSummary(rest) &&
+      paintSummary(before.paint) !== paintSummary(saved.rest)
+    ) {
       changes.push([`"${after.label}" no longer changes anything on the page.`]);
     } else {
       // Node marks entries from its first argument with 1 and those only in its second with -1.
-      const text = diff(after.aria.split('\n'), before.aria.split('\n')).filter(([change]) => change !== 0);
+      const text = diff(after.aria.split('\n'), before.aria.split('\n')).filter(
+        ([change]) => change !== 0,
+      );
       const names = await namesAt(page, changedPoints(before.paint, after.paint));
 
       changes.push([
         `In the state "${after.label}":`,
         ...(names.length ? [`  Near ${names.join(', ')}.`] : []),
-        ...(paintSummary(after.paint) === paintSummary(before.paint) ? [] : explainPaint(before.paint, after.paint).map((line) => `  ${line}`)),
+        ...(paintSummary(after.paint) === paintSummary(before.paint)
+          ? []
+          : explainPaint(before.paint, after.paint).map((line) => `  ${line}`)),
         ...text.slice(0, 8).map(([change, line]) => `  ${change < 0 ? '-' : '+'} ${line}`),
       ]);
     }
   }
 
-  for (const after of now.filter((state) => !savedHashes.has(stateHash(state)) && !saved.states.some(({ label }) => label === state.label))) {
+  for (const after of now.filter(
+    (state) =>
+      !savedHashes.has(stateHash(state)) &&
+      !saved.states.some(({ label }) => label === state.label),
+  )) {
     changes.push([`The state "${after.label}" is new.`]);
   }
 
   // A change to the whole page shows in every state, and the first few say all there is to say.
-  return [...changes.slice(0, 3).flat(), ...(changes.length > 3 ? [`${changes.length - 3} more states changed.`] : [])];
+  return [
+    ...changes.slice(0, 3).flat(),
+    ...(changes.length > 3 ? [`${changes.length - 3} more states changed.`] : []),
+  ];
 }

@@ -36,7 +36,8 @@ let port = 0;
 let writes = 0;
 let departures = 0;
 
-const svg = (color: string) => `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="${color}"/></svg>`;
+const svg = (color: string) =>
+  `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="${color}"/></svg>`;
 
 const page = () => {
   const heading = `<h1 style="color:${state.headingColor};margin-top:${state.headingMargin}px">Heading</h1>`;
@@ -120,11 +121,16 @@ const server = createServer((request, response) => {
     (state as { recoversAfter?: number }).recoversAfter!--;
     response.writeHead(502);
     response.end();
-  } else if (request.url === '/image.svg' && (state as { recoversAfter?: number }).recoversAfter === 0) {
+  } else if (
+    request.url === '/image.svg' &&
+    (state as { recoversAfter?: number }).recoversAfter === 0
+  ) {
     response.writeHead(200, { 'content-type': 'image/svg+xml' });
     response.end(svg(state.image));
   } else if (request.url === '/image.svg' || request.url === '/third.svg') {
-    response.writeHead(request.url === '/image.svg' ? state.assetStatus : 200, { 'content-type': 'image/svg+xml' });
+    response.writeHead(request.url === '/image.svg' ? state.assetStatus : 200, {
+      'content-type': 'image/svg+xml',
+    });
     response.end(svg(request.url === '/image.svg' ? state.image : state.thirdPartyImage));
   } else if (request.url === '/moved.svg') {
     response.writeHead(302, { location: `http://127.0.0.1:${port}/moved-target.svg` });
@@ -136,7 +142,14 @@ const server = createServer((request, response) => {
     response.writeHead(200, { 'content-type': 'text/javascript' });
     response.end(`document.body.append('A third-party script ran');`);
   } else {
-    response.writeHead(request.url === '/' ? state.status : request.url === '/_home/' || request.url === '/_many/' ? 200 : 404, { 'content-type': 'text/html' });
+    response.writeHead(
+      request.url === '/'
+        ? state.status
+        : request.url === '/_home/' || request.url === '/_many/'
+          ? 200
+          : 404,
+      { 'content-type': 'text/html' },
+    );
     response.end(page());
   }
 });
@@ -147,9 +160,14 @@ const site = () => `http://localhost:${port}`;
 
 function stet(...args: string[]) {
   return new Promise<{ status: number; output: string }>((resolve) => {
-    execFile(bin, args, { env: { ...process.env, XDG_STATE_HOME: stateHome } }, (error, stdout, stderr) => {
-      resolve({ status: error ? Number(error.code) : 0, output: stdout + stderr });
-    });
+    execFile(
+      bin,
+      args,
+      { env: { ...process.env, XDG_STATE_HOME: stateHome } },
+      (error, stdout, stderr) => {
+        resolve({ status: error ? Number(error.code) : 0, output: stdout + stderr });
+      },
+    );
   });
 }
 
@@ -201,7 +219,10 @@ test('passes when nothing changed and reports what it blocked', async () => {
   assert.match(output, /Blocked third parties/);
   // The same host was reached both ways, and each request is reported for what happened to it.
   assert.match(output, /Replayed saved responses from: 127\.0\.0\.1/);
-  assert.match(output, /Reached through a first-party redirect, so neither blocked nor saved: 127\.0\.0\.1/);
+  assert.match(
+    output,
+    /Reached through a first-party redirect, so neither blocked nor saved: 127\.0\.0\.1/,
+  );
 });
 
 test('a server that recovers from being overloaded still gets compared', async () => {
@@ -246,8 +267,16 @@ for (const [name, change, expected] of [
   ['a removed link', { href: '' }, /Text, links or controls changed/],
   ['a changed link', { href: '/elsewhere/' }, /Text, links or controls changed/],
   ['text on an off-screen slide', { slide: 'Sacond slide' }, /painted differently/],
-  ['a one-step color change only hovering shows', { hoverColor: 'rgb(0, 0, 201)' }, /state "hover on every element":\n\s+Near a "Call to action"/],
-  ['text inside closed details', { answer: 'A different answer' }, /state "all 2 closed details open"/],
+  [
+    'a one-step color change only hovering shows',
+    { hoverColor: 'rgb(0, 0, 201)' },
+    /state "hover on every element":\n\s+Near a "Call to action"/,
+  ],
+  [
+    'text inside closed details',
+    { answer: 'A different answer' },
+    /state "all 2 closed details open"/,
+  ],
   ['an error status', { status: 500 }, /could not compare/],
   ['an overloaded server', { assetStatus: 502 }, /gateway error/],
 ] as const) {
@@ -287,10 +316,26 @@ test('only --full sees a change that happens during compositing', async () => {
 for (const [name, change, expected] of [
   ['a menu that stops opening on hover', { menuOpens: false }, /"hovering "?Menu/],
   ['text on a tab', { tabText: 'Sacond tab' }, /state "tab "Two/],
-  ['text behind a button inside closed details', { behindNestedButton: 'Bahind a nested button' }, /pressing "More"/],
-  ['text behind a button that only one tab shows', { behindTabButton: 'Bahind a button on a tab' }, /pressing "On a tab"/],
-  ['text behind a custom control that a press reveals', { behindCustomControl: 'Bahind a custom control' }, /pressing "Custom control"/],
-  ['a flyout that another one would cover', { coveredPanel: 'rgb(0, 0, 1)' }, /\+ text at .*#FF000001/],
+  [
+    'text behind a button inside closed details',
+    { behindNestedButton: 'Bahind a nested button' },
+    /pressing "More"/,
+  ],
+  [
+    'text behind a button that only one tab shows',
+    { behindTabButton: 'Bahind a button on a tab' },
+    /pressing "On a tab"/,
+  ],
+  [
+    'text behind a custom control that a press reveals',
+    { behindCustomControl: 'Bahind a custom control' },
+    /pressing "Custom control"/,
+  ],
+  [
+    'a flyout that another one would cover',
+    { coveredPanel: 'rgb(0, 0, 1)' },
+    /\+ text at .*#FF000001/,
+  ],
 ] as const) {
   test(`only --full drives controls, and it fails on ${name}`, async () => {
     state = { ...clean, ...change };
