@@ -151,6 +151,13 @@ export function expectNoGatewayErrors(gatewayErrors: GatewayErrors) {
   ).toBe(0);
 }
 
+declare global {
+  interface Window {
+    /** The browser's own requestAnimationFrame, which page.clock can't hold back. */
+    stetFrame: typeof requestAnimationFrame;
+  }
+}
+
 const requests = new WeakMap<Page, { pending: Set<Request>; started: boolean }>();
 
 // Timers fire only when Stet runs them, from before the first script, so what a page shows can't
@@ -175,6 +182,8 @@ export async function makeRepeatable(page: Page) {
   await page.addInitScript(() => {
     let seed = 1;
 
+    // This runs before page.clock's replacement, which only the clock's own timers call.
+    window.stetFrame = window.requestAnimationFrame.bind(window);
     Math.random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
     // Scripts restart video when it scrolls into view, and any frame but the first varies.
     HTMLMediaElement.prototype.play = () => Promise.resolve();
@@ -209,10 +218,12 @@ async function requestsDone(page: Page) {
   return started;
 }
 
-// Use Playwright's capture here, because a raw Page.captureScreenshot with a clip changes the
-// layout on emulated phones.
+/** Waits until Chromium has painted what the page last changed. */
 export function drawFrame(page: Page) {
-  return page.screenshot({ type: 'jpeg', quality: 1, clip: { x: 0, y: 0, width: 1, height: 1 } });
+  // The second callback runs only once the frame that ran the first one has painted.
+  return page.evaluate(
+    () => new Promise<void>((resolve) => window.stetFrame(() => window.stetFrame(() => resolve()))),
+  );
 }
 
 // A blank image or fallback font must fail here instead of passing as a stable capture.
