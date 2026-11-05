@@ -8,9 +8,7 @@
     "node": ">=24 <27"
   },
   "scripts": {
-    "baseline": "playwright test --update-snapshots=all",
-    "verify": "playwright test --project=desktop --project=small-phone",
-    "signoff": "playwright test",
+    "stet": "node src/stet.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
