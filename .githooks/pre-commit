@@ -1,0 +1,6 @@
+#!/bin/sh
+# Tests take minutes and drive browsers, so `pnpm check` runs them before a change is done.
+set -eu
+pnpm format:check
+pnpm lint
+exec pnpm typecheck

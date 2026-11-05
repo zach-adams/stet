@@ -1,34 +1,48 @@
 import { createHash } from 'node:crypto';
-import { diff } from 'node:util';
 import type { CDPSession, JSHandle, Page } from '@playwright/test';
 import { settle } from './capture.ts';
-import { changedPoints, explainPaint, paintSummary, type PaintRecord } from './paint.ts';
+import {
+  changedPoints,
+  explainPaint,
+  lineChanges,
+  paintSummary,
+  type PaintRecord,
+} from './paint.ts';
 
-export type State = { label: string; group: 'pool' | 'control'; paint: PaintRecord; aria: string };
+export interface State {
+  label: string;
+  group: 'pool' | 'control';
+  paint: PaintRecord;
+  aria: string;
+}
 
 // A page with more than this is rare, and the report says how many weren't driven.
 const MOST_CONTROL_READS = 60;
-
 const FOCUSABLE = ':is(a[href],button,input,select,textarea,summary,[tabindex],[contenteditable])';
 const HOLDS_FOCUSABLE = `:has(${FOCUSABLE})`;
 
-// Each pool puts every element on the page into a state at once, so one read covers them all. Later entries replace earlier ones on the elements they match.
-const POOLS: Record<string, [selector: string, classes: string[]][]> = {
+// Each pool puts every element on the page into a state at once, so one read covers them all.
+// Later entries replace earlier ones on the elements they match.
+const POOLS = {
   hover: [['*', ['hover']]],
-  // Only what can take focus gets it, because forcing it on a wrapper draws a focus ring no visitor could ever see. Pressed styles rarely touch what focus styles do, and sharing a read saves one per page.
+  // Only what can take focus gets it, because forcing it on a wrapper draws a focus ring no
+  // visitor could ever see. Pressed styles rarely touch what focus styles do, and sharing a
+  // read saves one per page.
   'focus and press': [
     ['*', ['active']],
     [HOLDS_FOCUSABLE, ['active', 'focus-within']],
     [`${FOCUSABLE}:not(${HOLDS_FOCUSABLE})`, ['active', 'focus', 'focus-visible', 'focus-within']],
   ],
-  // One element has focus at a time, so a container and what's inside it get separate reads. Together, the link's own focus style hides what the container's does to it.
+  // One element has focus at a time, so a container and what's inside it get separate reads.
+  // Together, the link's own focus style hides what the container's does to it.
   'focus on containers': [
     [HOLDS_FOCUSABLE, ['focus-within']],
     [`${FOCUSABLE}${HOLDS_FOCUSABLE}`, ['focus', 'focus-visible', 'focus-within']],
   ],
-};
+} satisfies Record<string, Array<[selector: string, classes: string[]]>>;
 
-// Keep one document for the whole walk, because Chromium files forced states under node ids and a new document's ids can't clear them.
+// Keep one document for the whole walk, because Chromium files forced states under node ids
+// and a new document's ids can't clear them.
 async function forcer(page: Page, cdp: CDPSession) {
   const { root } = await cdp.send('DOM.getDocument', { depth: 0 });
   const set = async (selector: string, classes: string[]) => {
@@ -45,10 +59,11 @@ async function forcer(page: Page, cdp: CDPSession) {
 
   return {
     /** Returns how many elements the last entry matched. */
-    apply: async (pool: [string, string[]][]) => {
+    apply: async (pool: Array<[string, string[]]>) => {
       let matched = 0;
 
-      // Chromium doesn't cull an element while its transform is transitioning, so what's forced could stay in the recording of a scroll position far from it.
+      // Chromium doesn't cull an element while its transform is transitioning, so what's
+      // forced could stay in the recording of a scroll position far from it.
       await page.evaluate(() => {
         const style = document.createElement('style');
 
@@ -74,11 +89,16 @@ async function forcer(page: Page, cdp: CDPSession) {
   };
 }
 
-type Control = { element: HTMLElement; how: string; kind: string; name: string };
+interface Control {
+  element: HTMLElement;
+  how: string;
+  kind: string;
+  name: string;
+}
 
 /** Helpers that live in the page for the length of the walk. */
-type Walk = {
-  listening: Map<Element, Set<string>>;
+interface Walk {
+  listening: Map<HTMLElement, Set<string>>;
   driven: Set<Element>;
   found: Set<Element>;
   name: (element: Element) => string;
@@ -89,7 +109,7 @@ type Walk = {
   release: (controls: Control[], openBefore: Set<Element>) => void;
   holdTogether: (controls: Control[], before: Shown) => boolean;
   revealedControls: (before: Shown) => boolean;
-};
+}
 
 /** What was visible before a press, and how much room each element took up. */
 type Shown = Map<Element, number>;
@@ -102,23 +122,20 @@ declare global {
 
 function installWalk() {
   // Pressing things must not leave the page.
-  (window as unknown as { navigation: EventTarget }).navigation.addEventListener(
-    'navigate',
-    (event) => {
-      if (event.cancelable) {
-        event.preventDefault();
-      }
-    },
-  );
+  window.navigation.addEventListener('navigate', (event) => {
+    if (event.cancelable) {
+      event.preventDefault();
+    }
+  });
 
   window.open = () => null;
 
   const HOVERS = ['mouseenter', 'mouseover', 'pointerenter'];
-  const LEAVES: Record<string, string> = {
-    mouseenter: 'mouseleave',
-    mouseover: 'mouseout',
-    pointerenter: 'pointerleave',
-  };
+  const LEAVES = new Map([
+    ['mouseenter', 'mouseleave'],
+    ['mouseover', 'mouseout'],
+    ['pointerenter', 'pointerleave'],
+  ]);
   const shown = (element: Element) =>
     element.checkVisibility({ visibilityProperty: true, opacityProperty: true });
   const room = (element: Element) => {
@@ -126,7 +143,9 @@ function installWalk() {
 
     return box.width * box.height;
   };
-  // A panel collapsed with height 0 counts as visible, along with everything inside it, so it has to be judged by the room it took up.
+
+  // A panel collapsed with height 0 counts as visible, along with everything inside it,
+  // so it has to be judged by the room it took up.
   const appeared = (element: Element, before: Shown) =>
     shown(element) && !before.get(element) && room(element) > 0;
   const appearedInside = (element: Element, before: Shown) => {
@@ -142,6 +161,7 @@ function installWalk() {
 
     return false;
   };
+
   const name = (element: Element) =>
     (
       element.getAttribute('aria-label') ||
@@ -161,13 +181,26 @@ function installWalk() {
         view: window,
       }),
     );
-  // Links that go somewhere and form fields do what their markup says, and pressing one wouldn't reveal anything to compare.
-  const leavesThePage = (element: Element) =>
-    element.matches('[type=submit],[type=reset],input,select,textarea') ||
-    (element instanceof HTMLButtonElement && Boolean(element.form) && element.type === 'submit') ||
-    (element instanceof HTMLAnchorElement &&
+  // Links that go somewhere and form fields do what their markup says, and pressing one
+  // wouldn't reveal anything to compare.
+  const leavesThePage = (element: Element) => {
+    if (element.matches('[type=submit],[type=reset],input,select,textarea')) {
+      return true;
+    }
+
+    const submitsForm =
+      element instanceof HTMLButtonElement && Boolean(element.form) && element.type === 'submit';
+
+    if (submitsForm) {
+      return true;
+    }
+
+    return (
+      element instanceof HTMLAnchorElement &&
       !/^#|^$/.test(element.getAttribute('href') ?? '') &&
-      !element.matches('[role=tab],[aria-expanded],[aria-controls]'));
+      !element.matches('[role=tab],[aria-expanded],[aria-controls]')
+    );
+  };
 
   window.stetWalk = {
     listening: new Map(),
@@ -176,10 +209,11 @@ function installWalk() {
     name,
     shown,
 
-    // With `before`, only what a press revealed, so a nested control runs while what reveals it is still open.
+    // With `before`, only what a press revealed, so a nested control runs while what reveals
+    // it is still open.
     controls(before) {
       const found = new Map<Element, Control>();
-      const add = (element: Element, how: string, kind: string) => {
+      const add = (element: HTMLElement, how: string, kind: string) => {
         const usable =
           shown(element) &&
           !element.matches('html,body,[disabled]') &&
@@ -188,28 +222,33 @@ function installWalk() {
           (!before || appearedInside(element, before));
 
         if (usable && !found.has(element) && (how !== 'click' || !leavesThePage(element))) {
-          found.set(element, { element: element as HTMLElement, how, kind, name: name(element) });
+          found.set(element, { element, how, kind, name: name(element) });
           this.found.add(element);
         }
       };
 
       document.querySelectorAll('summary').forEach((element) => add(element, 'click', 'details'));
-      document.querySelectorAll('[role=tab]').forEach((element) => add(element, 'click', 'tab'));
-      document.querySelectorAll('[aria-expanded="false"],[aria-controls]').forEach((element) => {
-        // Some menus put aria-expanded on a list item and open on hover, which clicking it wouldn't do.
-        if (
-          element.matches('button,summary,a,[role=button],[tabindex]') ||
-          this.listening.get(element)?.has('click')
-        ) {
-          add(
-            element,
-            'click',
-            element.getAttribute('aria-expanded') === 'false' ? 'disclosure' : 'control',
-          );
-        }
-      });
       document
-        .querySelectorAll(
+        .querySelectorAll<HTMLElement>('[role=tab]')
+        .forEach((element) => add(element, 'click', 'tab'));
+      document
+        .querySelectorAll<HTMLElement>('[aria-expanded="false"],[aria-controls]')
+        .forEach((element) => {
+          // Some menus put aria-expanded on a list item and open on hover, which clicking it
+          // wouldn't do.
+          if (
+            element.matches('button,summary,a,[role=button],[tabindex]') ||
+            this.listening.get(element)?.has('click')
+          ) {
+            add(
+              element,
+              'click',
+              element.getAttribute('aria-expanded') === 'false' ? 'disclosure' : 'control',
+            );
+          }
+        });
+      document
+        .querySelectorAll<HTMLElement>(
           '[popovertarget],[commandfor],[aria-haspopup=dialog],[data-bs-toggle],[data-toggle]',
         )
         .forEach((element) => add(element, 'click', 'control'));
@@ -234,12 +273,11 @@ function installWalk() {
       return [...found.values()].sort((a, b) => Number(closes(a)) - Number(closes(b)));
     },
 
-    everythingShown: () =>
-      new Map(
-        [...document.querySelectorAll('body *')]
-          .filter(shown)
-          .map((element) => [element, room(element)]),
-      ),
+    everythingShown: () => {
+      const elements = [...document.querySelectorAll('body *')].filter(shown);
+
+      return new Map(elements.map((element) => [element, room(element)]));
+    },
 
     press(controls) {
       for (const control of controls) {
@@ -251,11 +289,14 @@ function installWalk() {
       }
     },
 
-    // Put the page back: leave what was hovered, press what's still expanded again, and close what opened.
+    // Put the page back: leave what was hovered, press what's still expanded again,
+    // and close what opened.
     release(controls, openBefore) {
       for (const control of controls) {
-        if (LEAVES[control.how]) {
-          fire(control, LEAVES[control.how]!);
+        const leave = LEAVES.get(control.how);
+
+        if (leave) {
+          fire(control, leave);
         } else if (
           control.element.getAttribute('aria-expanded') === 'true' ||
           (control.kind === 'details' && control.element.closest('details')?.open)
@@ -264,19 +305,20 @@ function installWalk() {
         }
       }
 
-      document.querySelectorAll('dialog[open]').forEach((dialog) => {
+      document.querySelectorAll<HTMLDialogElement>('dialog[open]').forEach((dialog) => {
         if (!openBefore.has(dialog)) {
-          (dialog as HTMLDialogElement).close();
+          dialog.close();
         }
       });
-      document.querySelectorAll('[popover]:popover-open').forEach((popover) => {
+      document.querySelectorAll<HTMLElement>('[popover]:popover-open').forEach((popover) => {
         if (!openBefore.has(popover)) {
-          (popover as HTMLElement).hidePopover();
+          popover.hidePopover();
         }
       });
     },
 
-    // Controls share a read only if they all stayed on and what they revealed doesn't overlap, because one could hide another.
+    // Controls share a read only if they all stayed on and what they revealed doesn't overlap,
+    // because one could hide another.
     holdTogether(controls, before) {
       const on = controls.every(
         (control) =>
@@ -286,10 +328,11 @@ function installWalk() {
       const fresh = new Set(
         [...document.querySelectorAll('body *')].filter((element) => appeared(element, before)),
       );
-      const boxes = [...fresh]
-        .filter((element) => !fresh.has(element.parentElement!))
-        .map((element) => element.getBoundingClientRect())
-        .filter((box) => box.width && box.height);
+      const outermost = [...fresh].filter(
+        (element) => !element.parentElement || !fresh.has(element.parentElement),
+      );
+      const measured = outermost.map((element) => element.getBoundingClientRect());
+      const boxes = measured.filter((box) => box.width && box.height);
       const overlaps = boxes.some((a, index) =>
         boxes
           .slice(index + 1)
@@ -314,29 +357,111 @@ function installWalk() {
 async function findListeners(page: Page, cdp: CDPSession) {
   const { result } = await cdp.send('Runtime.evaluate', { expression: 'document.documentElement' });
   const { listeners } = await cdp.send('DOMDebugger.getEventListeners', {
+    // SAFETY: Evaluating document.documentElement returns a remote DOM object.
     objectId: result.objectId!,
     depth: -1,
     pierce: true,
   });
 
-  for (const listener of listeners.filter(
-    ({ type, backendNodeId }) =>
-      ['click', 'mouseenter', 'mouseover', 'pointerenter'].includes(type) && backendNodeId,
-  )) {
-    const { object } = await cdp.send('DOM.resolveNode', {
-      backendNodeId: listener.backendNodeId!,
-    });
+  const controlListeners = listeners.filter(({ type, backendNodeId }) => {
+    const drivesControl = ['click', 'mouseenter', 'mouseover', 'pointerenter'].includes(type);
+
+    return drivesControl && backendNodeId;
+  });
+
+  for (const listener of controlListeners) {
+    const { object } = await cdp.send('DOM.resolveNode', { backendNodeId: listener.backendNodeId });
 
     await cdp.send('Runtime.callFunctionOn', {
-      objectId: object.objectId!,
-      functionDeclaration:
-        'function (type) { if (this.nodeType === 1) { const seen = window.stetWalk.listening; seen.set(this, (seen.get(this) ?? new Set()).add(type)); } }',
+      objectId: object.objectId,
+      functionDeclaration: `function (type) {
+        if (this.nodeType === 1) {
+          const seen = window.stetWalk.listening;
+          seen.set(this, (seen.get(this) ?? new Set()).add(type));
+        }
+      }`,
       arguments: [{ value: listener.type }],
     });
   }
 }
 
-/** Puts the page into every state it can reach and reads each one. Timers run only when told to, so nothing here waits on the real clock. */
+// Details stay in flow, so they can't hide each other, and the pools then reach what's
+// inside them. An exclusive group would allow only one, so it's lifted while they're open.
+function openClosedDetails() {
+  let total = 0;
+
+  for (let closed = 1; closed; total += closed) {
+    const summaries = [
+      ...document.querySelectorAll<HTMLElement>('details:not([open]) > summary'),
+    ].filter((summary) => window.stetWalk.shown(summary));
+
+    closed = summaries.length;
+
+    for (const summary of summaries) {
+      // SAFETY: The selector matches only summaries that are direct children of details.
+      const details = summary.parentElement as HTMLDetailsElement;
+
+      details.dataset.stetName = details.name;
+      details.name = '';
+      summary.click();
+      window.stetWalk.driven.add(summary);
+    }
+  }
+
+  return total;
+}
+
+async function closeDetails(page: Page) {
+  await page.evaluate(() => {
+    for (const details of document.querySelectorAll<HTMLDetailsElement>(
+      'details[data-stet-name]',
+    )) {
+      details.open = false;
+      // SAFETY: The selector requires the data-stet-name attribute.
+      details.name = details.dataset.stetName!;
+      delete details.dataset.stetName;
+    }
+  });
+  await settle(page);
+}
+
+function labelFor(group: Array<Pick<Control, 'how' | 'kind' | 'name'>>) {
+  const first = group[0];
+  let verb = 'hovering';
+
+  if (first.kind === 'tab') {
+    verb = 'tab';
+  } else if (first.how === 'click') {
+    verb = 'pressing';
+  }
+
+  return `${verb} "${first.name}"${group.length > 1 ? ` and ${group.length - 1} more` : ''}`;
+}
+
+// Tabs replace each other within a list and don't touch other lists, so a read can take one
+// from each.
+function buildTabRounds() {
+  const lists = new Map<Element | null, Control[]>();
+
+  for (const control of window.stetWalk.controls().filter(({ kind }) => kind === 'tab')) {
+    const list = control.element.closest('[role=tablist]') ?? control.element.parentElement;
+
+    lists.set(list, [...(lists.get(list) ?? []), control]);
+  }
+
+  const longest = Math.max(0, ...[...lists.values()].map((list) => list.length));
+
+  return Array.from({ length: longest }, (_, index) => {
+    const controls = [...lists.values()].map((list) => list[index]);
+
+    return controls.filter((control) => control !== undefined);
+  });
+}
+
+/**
+ * Puts the page into every state it can reach and reads each one. Timers run only when told
+ * to, so nothing here waits on the real clock.
+ */
 export async function walkStates(
   page: Page,
   readPaint: () => Promise<PaintRecord>,
@@ -347,10 +472,10 @@ export async function walkStates(
   const controls: State[] = [];
   let reads = 0;
 
-  const read = async (into: State[], label: string) => {
+  const read = async (into: State[], group: State['group'], label: string) => {
     into.push({
       label,
-      group: into === pools ? 'pool' : 'control',
+      group,
       paint: await readPaint(),
       aria: `${await page.locator('body').ariaSnapshot()}\n`,
     });
@@ -362,75 +487,33 @@ export async function walkStates(
 
   const forced = await forcer(page, cdp);
   const atLoad = await page.evaluateHandle(() => window.stetWalk.everythingShown());
-
-  // Details stay in flow, so they can't hide each other, and the pools below then reach what's inside them. An exclusive group would allow only one, so it's lifted while they're open.
-  const opened = await page.evaluate(() => {
-    let total = 0;
-
-    for (let closed = 1; closed; total += closed) {
-      const summaries = [...document.querySelectorAll('details:not([open]) > summary')].filter(
-        (summary) => window.stetWalk.shown(summary),
-      ) as HTMLElement[];
-
-      closed = summaries.length;
-
-      for (const summary of summaries) {
-        const details = summary.parentElement as HTMLDetailsElement;
-
-        details.dataset.stetName = details.name;
-        details.name = '';
-        summary.click();
-        window.stetWalk.driven.add(summary);
-      }
-    }
-
-    return total;
-  });
+  const opened = await page.evaluate(openClosedDetails);
 
   if (opened) {
     await settle(page);
-    await read(pools, `all ${opened} closed details open`);
+    await read(pools, 'pool', `all ${opened} closed details open`);
   }
 
   for (const [label, pool] of Object.entries(POOLS)) {
     const matched = await forced.apply(pool);
 
-    // A page with no focusable containers has nothing to show in that read, and it's the only one that can be empty.
+    // A page with no focusable containers has nothing to show in that read, and it's the only
+    // one that can be empty.
     if (matched || label !== 'focus on containers') {
       await settle(page);
-      await read(pools, `${label} on every element`);
+      await read(pools, 'pool', `${label} on every element`);
     }
 
     await forced.clear();
   }
 
-  const close = async () => {
-    await page.evaluate(() => {
-      for (const details of document.querySelectorAll<HTMLDetailsElement>(
-        'details[data-stet-name]',
-      )) {
-        details.open = false;
-        details.name = details.dataset.stetName!;
-        delete details.dataset.stetName;
-      }
-    });
-    await settle(page);
-  };
-
   if (!driveControls) {
-    await close();
+    await closeDetails(page);
 
-    return { pools, controls, notDriven: [] as string[] };
+    return { pools, controls, notDriven: [] };
   }
 
   await findListeners(page, cdp);
-
-  const labelFor = (group: Pick<Control, 'how' | 'kind' | 'name'>[]) => {
-    const first = group[0]!;
-    const verb = first.kind === 'tab' ? 'tab' : first.how === 'click' ? 'pressing' : 'hovering';
-
-    return `${verb} "${first.name}"${group.length > 1 ? ` and ${group.length - 1} more` : ''}`;
-  };
 
   const drive = async (group: JSHandle<Control[]>) => {
     const facts = await group.evaluate((list) =>
@@ -453,13 +536,14 @@ export async function walkStates(
     await group.evaluate((list) => window.stetWalk.press(list));
     await settle(page);
 
-    if (
-      facts.length > 1 &&
-      !(await group.evaluate(
+    const heldTogether =
+      facts.length === 1 ||
+      (await group.evaluate(
         (list, shownBefore) => window.stetWalk.holdTogether(list, shownBefore),
         before,
-      ))
-    ) {
+      ));
+
+    if (!heldTogether) {
       const half = Math.ceil(facts.length / 2);
 
       await release();
@@ -472,19 +556,22 @@ export async function walkStates(
     const label = labelFor(facts);
 
     reads++;
-    await read(controls, label);
+    await read(controls, 'control', label);
     // Counted only once read, so a control the read limit cuts off is reported as not driven.
     await group.evaluate((list) =>
       list.forEach(({ element }) => window.stetWalk.driven.add(element)),
     );
 
-    if (
-      await page.evaluate((shownBefore) => window.stetWalk.revealedControls(shownBefore), before)
-    ) {
+    const revealedControls = await page.evaluate(
+      (shownBefore) => window.stetWalk.revealedControls(shownBefore),
+      before,
+    );
+
+    if (revealedControls) {
       reads++;
-      await forced.apply(POOLS.hover!);
+      await forced.apply(POOLS.hover);
       await settle(page);
-      await read(controls, `${label}, then hover on every element`);
+      await read(controls, 'control', `${label}, then hover on every element`);
       await forced.clear();
       await settle(page);
     }
@@ -517,27 +604,12 @@ export async function walkStates(
 
   // What was inside closed details needs pressing while they're open.
   await explore(atLoad);
-  await close();
+  await closeDetails(page);
 
-  // Tabs replace each other within a list and don't touch other lists, so a read can take one from each.
-  const rounds = await page.evaluateHandle(() => {
-    const lists = new Map<Element, Control[]>();
-
-    for (const control of window.stetWalk.controls().filter(({ kind }) => kind === 'tab')) {
-      const list = control.element.closest('[role=tablist]') ?? control.element.parentElement!;
-
-      lists.set(list, [...(lists.get(list) ?? []), control]);
-    }
-
-    const longest = Math.max(0, ...[...lists.values()].map((list) => list.length));
-
-    return Array.from({ length: longest }, (_, index) =>
-      [...lists.values()].map((list) => list[index]).filter((control) => control !== undefined),
-    );
-  });
+  const rounds = await page.evaluateHandle(buildTabRounds);
 
   for (let round = 0; round < (await rounds.evaluate((all) => all.length)); round++) {
-    await drive(await rounds.evaluateHandle((all, round) => all[round]!, round));
+    await drive(await rounds.evaluateHandle((all, round) => all[round], round));
   }
 
   // Back to each list's first tab, so what follows starts from how the page loaded.
@@ -548,44 +620,52 @@ export async function walkStates(
   return {
     pools,
     controls,
-    notDriven: await page.evaluate(() =>
-      [...window.stetWalk.found]
-        .filter((element) => !window.stetWalk.driven.has(element))
-        .map(window.stetWalk.name),
-    ),
+    notDriven: await page.evaluate(() => {
+      const remaining = [...window.stetWalk.found].filter(
+        (element) => !window.stetWalk.driven.has(element),
+      );
+
+      return remaining.map(window.stetWalk.name);
+    }),
   };
 }
 
-const stateHash = ({ paint, aria }: State) =>
-  createHash('sha1').update(paintSummary(paint)).update(aria).digest('hex');
+function stateHash({ paint, aria }: State) {
+  return createHash('sha1').update(paintSummary(paint)).update(aria).digest('hex');
+}
 
-/** The verdict for a set of states, in an order that doesn't depend on how the markup lists its controls. */
-export const stateHashes = (states: State[]) => `${states.map(stateHash).sort().join('\n')}\n`;
+/**
+ * The verdict for a set of states, in an order that doesn't depend on how the markup lists
+ * its controls.
+ */
+export function stateHashes(states: State[]) {
+  return `${states.map(stateHash).sort().join('\n')}\n`;
+}
 
 /** Names the controls, or failing that the smallest elements, at these places on the page. */
-export function namesAt(page: Page, points: { x: number; y: number }[]) {
+export function namesAt(page: Page, points: Array<{ x: number; y: number }>) {
   return page.evaluate((points) => {
-    const boxes = [...document.querySelectorAll('body *')]
-      .map((element) => ({ element, box: element.getBoundingClientRect() }))
-      .filter(({ box }) => box.width && box.height);
+    const measured = [...document.querySelectorAll('body *')].map((element) => ({
+      element,
+      box: element.getBoundingClientRect(),
+    }));
+    const boxes = measured.filter(({ box }) => box.width && box.height);
     const names = new Set<string>();
 
     for (const { x, y } of points) {
       const smallest = boxes
-        .filter(
-          ({ box }) =>
-            x >= box.left + scrollX &&
-            x <= box.right + scrollX &&
-            y >= box.top + scrollY &&
-            y <= box.bottom + scrollY,
-        )
+        .filter(({ box }) => {
+          const withinWidth = x >= box.left + scrollX && x <= box.right + scrollX;
+
+          return withinWidth && y >= box.top + scrollY && y <= box.bottom + scrollY;
+        })
         .sort((a, b) => a.box.width * a.box.height - b.box.width * b.box.height)[0]?.element;
 
       if (smallest) {
-        const named =
-          smallest.closest(
-            'a,button,summary,input,select,textarea,[role=button],[role=tab],h1,h2,h3,h4,h5,h6,li,p,figure',
-          ) ?? smallest;
+        const selector =
+          'a,button,summary,input,select,textarea,[role=button],[role=tab],' +
+          'h1,h2,h3,h4,h5,h6,li,p,figure';
+        const named = smallest.closest(selector) ?? smallest;
         const text = (named.getAttribute('aria-label') || named.textContent || '')
           .replace(/\s+/g, ' ')
           .trim()
@@ -621,10 +701,7 @@ export async function explainStates(
     ) {
       changes.push([`"${after.label}" no longer changes anything on the page.`]);
     } else {
-      // Node marks entries from its first argument with 1 and those only in its second with -1.
-      const text = diff(after.aria.split('\n'), before.aria.split('\n')).filter(
-        ([change]) => change !== 0,
-      );
+      const text = lineChanges(before.aria.split('\n'), after.aria.split('\n')).slice(0, 8);
       const names = await namesAt(page, changedPoints(before.paint, after.paint));
 
       changes.push([
@@ -633,17 +710,19 @@ export async function explainStates(
         ...(paintSummary(after.paint) === paintSummary(before.paint)
           ? []
           : explainPaint(before.paint, after.paint).map((line) => `  ${line}`)),
-        ...text.slice(0, 8).map(([change, line]) => `  ${change < 0 ? '-' : '+'} ${line}`),
+        ...text,
       ]);
     }
   }
 
-  for (const after of now.filter(
+  const added = now.filter(
     (state) =>
       !savedHashes.has(stateHash(state)) &&
       !saved.states.some(({ label }) => label === state.label),
-  )) {
-    changes.push([`The state "${after.label}" is new.`]);
+  );
+
+  for (const { label } of added) {
+    changes.push([`The state "${label}" is new.`]);
   }
 
   // A change to the whole page shows in every state, and the first few say all there is to say.

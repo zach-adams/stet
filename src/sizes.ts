@@ -1,12 +1,14 @@
 import { devices } from '@playwright/test';
 
 // Six common screen sizes. Pixel ratio stays at 1 to keep captures fast.
-const touch = (agent: string, width: number, height: number) => ({
-  ...devices[agent],
-  viewport: { width, height },
-  screen: { width, height },
-  deviceScaleFactor: 1,
-});
+function touch(agent: string, width: number, height: number) {
+  return {
+    ...devices[agent],
+    viewport: { width, height },
+    screen: { width, height },
+    deviceScaleFactor: 1,
+  };
+}
 
 export const sizes = [
   { name: 'large-desktop', use: { viewport: { width: 2560, height: 1440 } } },

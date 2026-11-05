@@ -1,4 +1,5 @@
 import { basename, dirname } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import type {
   FullConfig,
   FullResult,
@@ -10,13 +11,21 @@ import type {
 } from '@playwright/test/reporter';
 import { run } from './run.ts';
 
-const count = (total: number, noun: string) => `${total} ${noun}${total === 1 ? '' : 's'}`;
-const plain = (error: TestError) =>
-  (error.message ?? String(error.value)).replace(/\u001b\[[0-9;]*m/g, '');
-const capped = (lines: string[], limit: number) =>
-  lines.length > limit ? [...lines.slice(0, limit), `  and ${lines.length - limit} more`] : lines;
+function count(total: number, noun: string) {
+  return `${total} ${noun}${total === 1 ? '' : 's'}`;
+}
 
-type Facts = {
+function plain(error: TestError) {
+  return stripVTControlCharacters(error.message ?? String(error.value));
+}
+
+function capped(lines: string[], limit: number) {
+  return lines.length > limit
+    ? [...lines.slice(0, limit), `  and ${lines.length - limit} more`]
+    : lines;
+}
+
+export interface Facts {
   blocked?: string[];
   replayed?: string[];
   redirected?: string[];
@@ -26,16 +35,19 @@ type Facts = {
   videos?: number;
   gatewayErrors?: number;
   notCompared?: { right: number; bottom: number };
-};
+}
 
-const factsOf = (result: TestResult): Facts =>
-  JSON.parse(
+function factsOf(result: TestResult): Facts {
+  return JSON.parse(
     result.attachments.find((attachment) => attachment.name === 'stet-facts')?.body?.toString() ??
       '{}',
   );
+}
 
-// One page at one size, read from Playwright's error text. Screens are the numbered reference files.
+// One page at one size, read from Playwright's error text. Screens are the numbered
+// reference files.
 function describe(result: TestResult) {
+  const facts = factsOf(result);
   const lines: string[] = [];
   const differ: string[] = [];
   const noReference: string[] = [];
@@ -54,7 +66,7 @@ function describe(result: TestResult) {
       compared = true;
       lines.push(`Screen ${screen?.[1] ?? '?'} never held still long enough to capture.`);
     } else if (missing) {
-      noReference.push(basename(missing[1]!));
+      noReference.push(basename(missing[1]));
     } else if (snapshot.endsWith('-size.txt')) {
       const [before, after] = [
         message.match(/^ {2}-(\S+)/m)?.[1],
@@ -71,7 +83,7 @@ function describe(result: TestResult) {
       );
     } else if (snapshot.endsWith('-paint.txt')) {
       changed = true;
-      lines.push(...(factsOf(result).paint ?? ['Painted differently.']));
+      lines.push(...(facts.paint ?? ['Painted differently.']));
     } else if (snapshot.endsWith('-pools.txt') || snapshot.endsWith('-controls.txt')) {
       changed = true;
       stateChanged = true;
@@ -97,7 +109,7 @@ function describe(result: TestResult) {
   }
 
   if (stateChanged) {
-    lines.push(...(factsOf(result).states ?? ['A hover, focus, pressed or open state changed.']));
+    lines.push(...(facts.states ?? ['A hover, focus, pressed or open state changed.']));
   }
 
   if (differ.length) {
@@ -115,19 +127,26 @@ function describe(result: TestResult) {
   }
 
   const failed = run.saving ? 'could not save' : 'could not compare';
-  const gatewayErrors = factsOf(result).gatewayErrors;
 
   // Whatever else differs on an overloaded server says nothing about the page.
-  if (gatewayErrors) {
+  if (facts.gatewayErrors) {
     return {
       label: failed,
       lines: [
-        `The site answered ${gatewayErrors} requests with a gateway error, so it may be overloaded. Run fewer comparisons at once and try again.`,
+        `The site answered ${facts.gatewayErrors} requests with a gateway error, so it may be overloaded. Run fewer comparisons at once and try again.`,
       ],
     };
   }
 
-  return { label: changed ? 'changed' : compared ? failed : 'no reference', lines };
+  let label = 'no reference';
+
+  if (changed) {
+    label = 'changed';
+  } else if (compared) {
+    label = failed;
+  }
+
+  return { label, lines };
 }
 
 export default class Report implements Reporter {
@@ -164,9 +183,17 @@ export default class Report implements Reporter {
     const facts = factsOf(result);
     const size = test.parent.project()?.name ?? '';
 
-    for (const host of facts.blocked ?? []) this.blocked.add(host);
-    for (const host of facts.replayed ?? []) this.replayed.add(host);
-    for (const host of facts.redirected ?? []) this.redirected.add(host);
+    for (const host of facts.blocked ?? []) {
+      this.blocked.add(host);
+    }
+
+    for (const host of facts.replayed ?? []) {
+      this.replayed.add(host);
+    }
+
+    for (const host of facts.redirected ?? []) {
+      this.redirected.add(host);
+    }
 
     this.videos = Math.max(this.videos, facts.videos ?? 0);
 
@@ -186,6 +213,7 @@ export default class Report implements Reporter {
 
     if (result.status === 'passed') {
       this.passed++;
+
       return;
     }
 
@@ -211,6 +239,7 @@ export default class Report implements Reporter {
   onEnd(result: FullResult) {
     if (!this.total) {
       console.log('No page matched, so nothing was compared.');
+
       return;
     }
 

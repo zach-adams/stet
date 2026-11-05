@@ -1,56 +1,112 @@
 import { createHash } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { diff } from 'node:util';
 import type { Page } from '@playwright/test';
 import { drawFrame, measure, scrollAndHold } from './capture.ts';
 
-// Chromium records paint only this far past the visible area, so longer pages need more than one read.
+// Chromium records paint only this far past the visible area, so longer pages need more than one
+// read.
 const RECORDED_PAST_SCREEN = 4000;
 
-type Layer = {
+interface Layer {
   layerId: string;
   width: number;
   height: number;
   drawsContent: boolean;
   transform?: number[];
-};
+}
 
-/** What each layer paints and where it sits. The commands behind each one are kept under its pixel hash, only to explain a failure. */
-export type PaintRecord = { lines: string[]; commands: Record<string, string[]>; tops: number[] };
+/**
+ * What each layer paints and where it sits. The commands behind each one are kept under its pixel
+ * hash, only to explain a failure.
+ */
+export interface PaintRecord {
+  lines: string[];
+  commands: Record<string, string[]>;
+  tops: number[];
+}
 
-type Command = { method: string; params?: Record<string, any> };
+interface Rect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
 
-const round = (value: unknown) => Math.round(Number(value) * 10) / 10;
+interface Command {
+  method: string;
+  params?: {
+    paint?: { color?: string };
+    dx?: number;
+    dy?: number;
+    matrix44?: number[];
+    x?: number;
+    y?: number;
+    image?: { width?: number; height?: number };
+    dst?: Rect;
+    rect?: Rect;
+    rrect?: Rect & { upperLeftRadius?: { xRadius?: number } };
+    path?: { pathPoints?: Array<{ points?: Array<{ x?: number; y?: number }> }> };
+  };
+}
 
-// Says what each drawing command drew and where in its layer, following the moves before it. Raw logs are megabytes of curve points that explain nothing.
+function round(value: number | undefined) {
+  return Math.round(Number(value) * 10) / 10;
+}
+
+// Says what each drawing command drew and where in its layer, following the moves before it. Raw
+// logs are megabytes of curve points that explain nothing.
 function describeDrawing(log: Command[]) {
   const drawn: string[] = [];
-  const saved: [number, number][] = [];
+  const saved: Array<[number, number]> = [];
   let x = 0;
   let y = 0;
+  const point = (left: number, top: number) => `${round(left + x)},${round(top + y)}`;
+  const box = (rect: Rect) => `${point(rect.left, rect.top)} to ${point(rect.right, rect.bottom)}`;
 
   for (const { method, params = {} } of log) {
     const color = params.paint?.color ? ` ${params.paint.color}` : '';
-    const box = (rect: Record<string, number>) =>
-      `${round(rect.left! + x)},${round(rect.top! + y)} to ${round(rect.right! + x)},${round(rect.bottom! + y)}`;
 
-    if (method === 'save' || method === 'saveLayer') saved.push([x, y]);
-    else if (method === 'restore') [x, y] = saved.pop() ?? [0, 0];
-    else if (method === 'translate') [x, y] = [x + params.dx, y + params.dy];
-    else if (method === 'concat44') [x, y] = [x + params.matrix44[12], y + params.matrix44[13]];
-    else if (method === 'drawTextBlob')
-      drawn.push(`text at ${round(params.x + x)},${round(params.y + y)}${color}`);
-    else if (method === 'drawImageRect')
-      drawn.push(`image ${params.image?.width}x${params.image?.height} at ${box(params.dst)}`);
-    else if (method === 'drawRect') drawn.push(`box ${box(params.rect)}${color}`);
-    else if (method === 'drawRRect')
-      drawn.push(
-        `rounded box ${box(params.rrect)} radius ${round(params.rrect.upperLeftRadius?.xRadius)}${color}`,
-      );
-    else if (method === 'drawPath') {
-      const first = params.path?.pathPoints?.[0]?.points?.[0];
+    switch (method) {
+      case 'save':
+      case 'saveLayer':
+        saved.push([x, y]);
+        break;
+      case 'restore':
+        [x, y] = saved.pop() ?? [0, 0];
+        break;
+      case 'translate':
+        [x, y] = [x + params.dx!, y + params.dy!];
+        break;
+      case 'concat44':
+        [x, y] = [x + params.matrix44![12], y + params.matrix44![13]];
+        break;
+      case 'drawTextBlob':
+        drawn.push(`text at ${point(params.x!, params.y!)}${color}`);
+        break;
+      case 'drawImageRect':
+        drawn.push(`image ${params.image?.width}x${params.image?.height} at ${box(params.dst!)}`);
+        break;
+      case 'drawRect':
+        drawn.push(`box ${box(params.rect!)}${color}`);
+        break;
+      case 'drawRRect':
+        drawn.push(
+          `rounded box ${box(params.rrect!)} radius ${round(params.rrect!.upperLeftRadius?.xRadius)}${color}`,
+        );
+        break;
+      case 'drawPath': {
+        const first = params.path?.pathPoints?.[0]?.points?.[0];
 
-      drawn.push(`shape at ${round((first?.x ?? 0) + x)},${round((first?.y ?? 0) + y)}${color}`);
-    } else if (method.startsWith('draw')) drawn.push(`${method}${color}`);
+        drawn.push(`shape at ${point(first?.x ?? 0, first?.y ?? 0)}${color}`);
+        break;
+      }
+
+      default:
+        if (method.startsWith('draw')) {
+          drawn.push(`${method}${color}`);
+        }
+    }
   }
 
   return drawn;
@@ -59,17 +115,34 @@ function describeDrawing(log: Command[]) {
 const NO_PICTURE = /does not produce picture/;
 const LAYER_GONE = /No layer matching given id/;
 
+async function scrollStops(page: Page) {
+  const { height, lastScroll } = await measure(page);
+  const screen = height - lastScroll;
+  const stops: number[] = [];
+
+  for (let top = RECORDED_PAST_SCREEN; ; top += 2 * RECORDED_PAST_SCREEN + screen) {
+    stops.push(Math.min(top, lastScroll));
+
+    if (top + screen + RECORDED_PAST_SCREEN >= height) {
+      return stops;
+    }
+  }
+}
+
 /**
- * Reads what Chromium painted, per layer and without the compositor, so scroll position and in-flight motion can't change it.
+ * Reads what Chromium painted, per layer and without the compositor, so scroll position and
+ * in-flight motion can't change it.
  * Drawing order is left out of the verdict because harmless reordering changes it.
  */
 export async function paintReader(page: Page) {
   const cdp = await page.context().newCDPSession(page);
 
-  // Subscribing fresh for every read is what guarantees a current list. The list only arrives after a frame commits.
+  // Subscribing fresh for every read is what guarantees a current list. The list only arrives
+  // after a frame commits.
   const readLayers = async () => {
     let layers: Layer[] = [];
     const note = (event: { layers?: unknown }) => {
+      // SAFETY: LayerTree.layerTreeDidChange reports Chromium's layer list.
       layers = (event.layers as Layer[] | undefined) ?? layers;
     };
 
@@ -78,7 +151,7 @@ export async function paintReader(page: Page) {
 
     for (let tries = 0; tries < 40 && !layers.length; tries++) {
       await drawFrame(page);
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await sleep(20);
     }
 
     cdp.off('LayerTree.layerTreeDidChange', note);
@@ -93,29 +166,49 @@ export async function paintReader(page: Page) {
   const readLayer = async (layer: Layer) => {
     const { snapshotId } = await cdp.send('LayerTree.makeSnapshot', { layerId: layer.layerId });
     const { dataURL } = await cdp.send('LayerTree.replaySnapshot', { snapshotId });
-    const { commandLog } = await cdp.send('LayerTree.snapshotCommandLog', { snapshotId });
+    const { commandLog }: { commandLog: unknown } = await cdp.send('LayerTree.snapshotCommandLog', {
+      snapshotId,
+    });
 
     await cdp.send('LayerTree.releaseSnapshot', { snapshotId });
 
+    // SAFETY: Chromium's snapshot command log contains drawing commands with these fields.
+    const log = commandLog as Command[];
+
     return {
       pixels: createHash('sha1').update(dataURL).digest('hex'),
-      commands: describeDrawing(commandLog as unknown as Command[]),
+      commands: describeDrawing(log),
     };
   };
 
-  return async function readPaint(): Promise<PaintRecord> {
-    const { height, lastScroll } = await measure(page);
-    const screen = height - lastScroll;
-    const stops: number[] = [];
+  const readStop = async (stop: number, commands: PaintRecord['commands']) => {
+    const found: string[] = [];
 
-    for (let top = RECORDED_PAST_SCREEN; ; top += 2 * RECORDED_PAST_SCREEN + screen) {
-      stops.push(Math.min(top, lastScroll));
+    for (const layer of await readLayers()) {
+      const place = `${stop} ${layer.width}x${layer.height} ${(layer.transform ?? []).map((value) => +value.toFixed(2)).join(',')}`;
 
-      if (top + screen + RECORDED_PAST_SCREEN >= height) {
-        break;
+      try {
+        const { pixels, commands: drawn } = await readLayer(layer);
+
+        found.push(`${place} ${pixels}`);
+        commands[pixels] = drawn;
+      } catch (error) {
+        // A playing video draws outside the paint record, so only its size and place can be
+        // compared.
+        // SAFETY: Chromium reports snapshot failures with a message.
+        if (!NO_PICTURE.test((error as Error).message)) {
+          throw error;
+        }
+
+        found.push(`${place} video`);
       }
     }
 
+    return found;
+  };
+
+  return async function readPaint(): Promise<PaintRecord> {
+    const stops = await scrollStops(page);
     const lines: string[] = [];
     const commands: PaintRecord['commands'] = {};
 
@@ -127,33 +220,14 @@ export async function paintReader(page: Page) {
 
       for (let attempts = 0; ; attempts++) {
         try {
-          const found: string[] = [];
-
-          for (const layer of await readLayers()) {
-            const place = `${stop} ${layer.width}x${layer.height} ${(layer.transform ?? []).map((value) => +value.toFixed(2)).join(',')}`;
-
-            try {
-              const { pixels, commands: drawn } = await readLayer(layer);
-
-              found.push(`${place} ${pixels}`);
-              commands[pixels] = drawn;
-            } catch (error) {
-              // A playing video draws outside the paint record, so only its size and place can be compared.
-              if (!NO_PICTURE.test((error as Error).message)) {
-                throw error;
-              }
-
-              found.push(`${place} video`);
-            }
-          }
-
-          lines.push(...found);
+          lines.push(...(await readStop(stop, commands)));
           await cdp.send('LayerTree.disable');
           break;
         } catch (error) {
           await cdp.send('LayerTree.disable');
 
           // A frame can replace a layer between listing and reading it.
+          // SAFETY: Chromium reports layer failures with a message.
           if (attempts === 8 || !LAYER_GONE.test((error as Error).message)) {
             throw error;
           }
@@ -171,9 +245,11 @@ export async function paintReader(page: Page) {
   };
 }
 
-export const paintSummary = ({ lines }: PaintRecord) => `${lines.join('\n')}\n`;
+export function paintSummary({ lines }: PaintRecord) {
+  return `${lines.join('\n')}\n`;
+}
 
-function commandChanges(before: string[], after: string[]) {
+export function lineChanges(before: string[], after: string[]): string[] {
   const lines: string[] = [];
 
   // Node marks entries from its first argument with 1 and those only in its second with -1.
@@ -186,20 +262,14 @@ function commandChanges(before: string[], after: string[]) {
   return lines;
 }
 
-const parseLines = ({ lines }: PaintRecord) =>
-  lines.map((line) => {
+function parseLines({ lines }: PaintRecord) {
+  return lines.map((line) => {
     const [stop, size, matrix, pixels] = line.split(' ');
     const parts = (matrix ?? '').split(',').map(Number);
 
-    return {
-      stop: Number(stop),
-      size,
-      matrix,
-      pixels: pixels!,
-      x: parts[12] ?? 0,
-      y: parts[13] ?? 0,
-    };
+    return { stop: Number(stop), size, matrix, pixels, x: parts[12] ?? 0, y: parts[13] ?? 0 };
   });
+}
 
 /** Where on the page drawing changed, to name the elements there. */
 export function changedPoints(saved: PaintRecord, now: PaintRecord) {
@@ -210,23 +280,31 @@ export function changedPoints(saved: PaintRecord, now: PaintRecord) {
     return [];
   }
 
-  return after.flatMap((layer, index) =>
-    layer.pixels === before[index]!.pixels
-      ? []
-      : commandChanges(
-          saved.commands[before[index]!.pixels] ?? [],
-          now.commands[layer.pixels] ?? [],
-        )
-          .map((line) => line.match(/(?:at|box) (-?[\d.]+),(-?[\d.]+)/))
-          .filter((match) => match !== null)
-          .map((match) => ({
-            x: Number(match[1]) + layer.x,
-            y: Number(match[2]) + layer.y + (now.tops[layer.stop] ?? 0),
-          })),
-  );
+  return after.flatMap((layer, index) => {
+    const earlier = before[index];
+
+    if (layer.pixels === earlier.pixels) {
+      return [];
+    }
+
+    const top = now.tops[layer.stop] ?? 0;
+    const changes = lineChanges(
+      saved.commands[earlier.pixels] ?? [],
+      now.commands[layer.pixels] ?? [],
+    );
+
+    return changes.flatMap((line) => {
+      const match = line.match(/(?:at|box) (-?[\d.]+),(-?[\d.]+)/);
+
+      return match ? [{ x: Number(match[1]) + layer.x, y: Number(match[2]) + layer.y + top }] : [];
+    });
+  });
 }
 
-/** Say what differs in a form an agent can act on. This only explains. The comparison of the lines decides. */
+/**
+ * Say what differs in a form an agent can act on. This only explains. The comparison of the lines
+ * decides.
+ */
 export function explainPaint(saved: PaintRecord, now: PaintRecord) {
   const before = parseLines(saved);
   const after = parseLines(now);
@@ -239,7 +317,7 @@ export function explainPaint(saved: PaintRecord, now: PaintRecord) {
   const moved = new Set<string>();
 
   before.forEach((layer, index) => {
-    const other = after[index]!;
+    const other = after[index];
     const named =
       layer.size === other.size ? `Layer ${layer.size}` : `Layer ${layer.size}, now ${other.size},`;
 
@@ -248,7 +326,7 @@ export function explainPaint(saved: PaintRecord, now: PaintRecord) {
     }
 
     if (layer.pixels !== other.pixels) {
-      const changes = commandChanges(
+      const changes = lineChanges(
         saved.commands[layer.pixels] ?? [],
         now.commands[other.pixels] ?? [],
       );

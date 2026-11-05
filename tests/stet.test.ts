@@ -31,15 +31,22 @@ const clean = {
   behindCustomControl: 'Behind a custom control',
 };
 
-let state = { ...clean };
+type CleanState = typeof clean;
+
+interface FixtureState extends CleanState {
+  recoversAfter?: number;
+}
+
+let state: FixtureState = { ...clean };
 let port = 0;
 let writes = 0;
 let departures = 0;
 
-const svg = (color: string) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="${color}"/></svg>`;
+function svg(color: string) {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="${color}"/></svg>`;
+}
 
-const page = () => {
+function page() {
   const heading = `<h1 style="color:${state.headingColor};margin-top:${state.headingMargin}px">Heading</h1>`;
 
   return `<!doctype html><meta name="viewport" content="width=device-width"><title>Fixture</title>
@@ -108,7 +115,7 @@ ${Array.from({ length: state.extraControls }, (_, index) => `<button class="extr
   let slide = 0;
   setInterval(() => { document.querySelector('#autoplay').textContent = 'Slide ' + ++slide; }, 1000);
 </script>`;
-};
+}
 
 const server = createServer((request, response) => {
   if (request.method === 'POST') {
@@ -117,14 +124,11 @@ const server = createServer((request, response) => {
   } else if (request.url === '/departed/') {
     departures++;
     response.end('Left');
-  } else if (request.url === '/image.svg' && (state as { recoversAfter?: number }).recoversAfter) {
-    (state as { recoversAfter?: number }).recoversAfter!--;
+  } else if (request.url === '/image.svg' && state.recoversAfter) {
+    state.recoversAfter--;
     response.writeHead(502);
     response.end();
-  } else if (
-    request.url === '/image.svg' &&
-    (state as { recoversAfter?: number }).recoversAfter === 0
-  ) {
+  } else if (request.url === '/image.svg' && state.recoversAfter === 0) {
     response.writeHead(200, { 'content-type': 'image/svg+xml' });
     response.end(svg(state.image));
   } else if (request.url === '/image.svg' || request.url === '/third.svg') {
@@ -142,21 +146,25 @@ const server = createServer((request, response) => {
     response.writeHead(200, { 'content-type': 'text/javascript' });
     response.end(`document.body.append('A third-party script ran');`);
   } else {
-    response.writeHead(
-      request.url === '/'
-        ? state.status
-        : request.url === '/_home/' || request.url === '/_many/'
-          ? 200
-          : 404,
-      { 'content-type': 'text/html' },
-    );
+    let status = 404;
+
+    if (request.url === '/') {
+      status = state.status;
+    } else if (request.url === '/_home/' || request.url === '/_many/') {
+      status = 200;
+    }
+
+    response.writeHead(status, { 'content-type': 'text/html' });
     response.end(page());
   }
 });
 
 const stateHome = mkdtempSync(join(tmpdir(), 'stet-test-'));
 const bin = join(import.meta.dirname, '../bin/stet');
-const site = () => `http://localhost:${port}`;
+
+function site() {
+  return `http://localhost:${port}`;
+}
 
 function stet(...args: string[]) {
   return new Promise<{ status: number; output: string }>((resolve) => {
@@ -171,10 +179,13 @@ function stet(...args: string[]) {
   });
 }
 
-const compare = (...args: string[]) => stet('compare', site(), '--size', 'desktop', ...args);
+function compare(...args: string[]) {
+  return stet('compare', site(), '--size', 'desktop', ...args);
+}
 
 before(async () => {
   await new Promise<void>((resolve) => server.listen(0, resolve));
+  // SAFETY: listening on port 0 creates a TCP server, and the listen callback has fired.
   port = (server.address() as AddressInfo).port;
 });
 
@@ -226,7 +237,7 @@ test('passes when nothing changed and reports what it blocked', async () => {
 });
 
 test('a server that recovers from being overloaded still gets compared', async () => {
-  state = { ...clean, assetStatus: 502, recoversAfter: 1 } as typeof state;
+  state = { ...clean, assetStatus: 502, recoversAfter: 1 };
 
   const { status, output } = await compare('/');
 

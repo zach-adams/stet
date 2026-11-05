@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import {
   expectNoGatewayErrors,
   freezeThirdParties,
@@ -19,31 +19,64 @@ import {
   paintSummary,
   type PaintRecord,
 } from './paint.ts';
+import type { Facts } from './report.ts';
 import { referencesDir, run } from './run.ts';
 import { explainStates, namesAt, stateHashes, walkStates, type State } from './states.ts';
 
+type PageSize = Awaited<ReturnType<typeof measure>>;
+
 /** Stored with the references, only to explain a failure. */
-type Record = { rest: PaintRecord; states: State[] };
+interface SavedRecord {
+  rest: PaintRecord;
+  states: State[];
+}
+
+// The hash keeps two addresses from sharing files, which would let saving one replace the
+// other's references unapproved.
+function referenceName(path: string) {
+  const slug = path.split('?')[0].split('/').filter(Boolean).join('-') || 'home';
+  const hash = createHash('sha1').update(path).digest('hex').slice(0, 8);
+
+  return `${slug}-${hash}`;
+}
+
+async function compareSizeAndAria(page: Page, name: string, size: PageSize) {
+  // A page that shrinks or grows must fail even where the parts it still has match.
+  expect.soft(`${size.width}x${size.height}\n`).toMatchSnapshot(`${name}-size.txt`);
+  // Pixels can't see where a link goes or what a control is called.
+  expect.soft(`${await page.locator('body').ariaSnapshot()}\n`).toMatchSnapshot(`${name}-aria.txt`);
+}
+
+async function compareScreens(page: Page, name: string, size: PageSize, facts: Facts) {
+  // A full-page screenshot resizes the page, which reloads responsive images and moves
+  // carousels, so take one screen at a time.
+  const stops = Array.from(
+    { length: Math.ceil(size.lastScroll / size.screenHeight) + 1 },
+    (_, screen) => Math.min(screen * size.screenHeight, size.lastScroll),
+  );
+
+  for (const [screen, top] of stops.entries()) {
+    await scrollAndHold(page, top);
+    await expect.soft(page).toHaveScreenshot(`${name}-${screen + 1}.png`);
+  }
+
+  // Script scrolling can't pan a phone screen across a page that is wider than it.
+  const right = Math.max(0, size.width - size.screenWidth);
+  const bottom = Math.max(0, size.height - size.lastScroll - size.screenHeight);
+
+  if (right || bottom) {
+    facts.notCompared = { right, bottom };
+  }
+}
 
 for (const path of run.pages) {
   test(path, async ({ page, context }, info) => {
-    // The hash keeps two addresses from sharing files, which would let saving one replace the other's references unapproved.
-    const name = `${path.split('?')[0]!.split('/').filter(Boolean).join('-') || 'home'}-${createHash('sha1').update(path).digest('hex').slice(0, 8)}`;
+    const name = referenceName(path);
     const reference = (suffix: string) =>
       join(referencesDir, info.project.name, `${name}${suffix}`);
     const hosts = await freezeThirdParties(context, reference('.har'));
     const gatewayErrors = watchGatewayErrors(context);
-    const facts: {
-      blocked?: string[];
-      replayed?: string[];
-      redirected?: string[];
-      paint?: string[];
-      states?: string[];
-      notDriven?: string[];
-      videos?: number;
-      gatewayErrors?: number;
-      notCompared?: { right: number; bottom: number };
-    } = {};
+    const facts: Facts = {};
 
     await makeRepeatable(page);
 
@@ -51,7 +84,8 @@ for (const path of run.pages) {
       const response = await openPage(page, path, gatewayErrors, info.parallelIndex);
 
       expect(response?.ok(), `${path} returned ${response?.status()}`).toBe(true);
-      // A site may redirect unknown addresses home, which would save the wrong page as this page's reference.
+      // A site may redirect unknown addresses home, which would save the wrong page as this
+      // page's reference.
       expect(
         response?.request().redirectedFrom(),
         `${path} redirected to ${page.url()}`,
@@ -62,17 +96,12 @@ for (const path of run.pages) {
 
       const size = await measure(page);
 
-      // A page that shrinks or grows must fail even where the parts it still has match.
-      expect.soft(`${size.width}x${size.height}\n`).toMatchSnapshot(`${name}-size.txt`);
-      // Pixels can't see where a link goes or what a control is called.
-      expect
-        .soft(`${await page.locator('body').ariaSnapshot()}\n`)
-        .toMatchSnapshot(`${name}-aria.txt`);
+      await compareSizeAndAria(page, name, size);
 
       const readPaint = await paintReader(page);
       const rest = await readPaint();
       const recordFile = reference('-record.json.gz');
-      const saved: Record | undefined =
+      const saved: SavedRecord | undefined =
         !run.saving && existsSync(recordFile)
           ? JSON.parse(gunzipSync(readFileSync(recordFile)).toString())
           : undefined;
@@ -102,7 +131,7 @@ for (const path of run.pages) {
 
       if (run.saving) {
         mkdirSync(dirname(recordFile), { recursive: true });
-        writeFileSync(recordFile, gzipSync(JSON.stringify({ rest, states } satisfies Record)));
+        writeFileSync(recordFile, gzipSync(JSON.stringify({ rest, states } satisfies SavedRecord)));
       } else if (saved) {
         const compared = every
           ? saved.states
@@ -118,34 +147,19 @@ for (const path of run.pages) {
         }
       }
 
-      // Labels aren't part of the verdict, so a control renamed or moved in the markup passes as long as every state still renders the same.
+      // Labels aren't part of the verdict, so a control renamed or moved in the markup passes
+      // as long as every state still renders the same.
       expect.soft(stateHashes(pools)).toMatchSnapshot(`${name}-pools.txt`);
 
       if (every) {
         expect.soft(stateHashes(controls)).toMatchSnapshot(`${name}-controls.txt`);
 
-        // A load of their own, so that every read above takes the same path whether or not screenshots follow.
+        // A load of their own, so that every read above takes the same path whether or not
+        // screenshots follow.
         await openPage(page, path, gatewayErrors, info.parallelIndex);
         await scrollAndHold(page, 0);
 
-        // A full-page screenshot resizes the page, which reloads responsive images and moves carousels, so take one screen at a time.
-        const stops = Array.from(
-          { length: Math.ceil(size.lastScroll / size.screenHeight) + 1 },
-          (_, screen) => Math.min(screen * size.screenHeight, size.lastScroll),
-        );
-
-        for (const [screen, top] of stops.entries()) {
-          await scrollAndHold(page, top);
-          await expect.soft(page).toHaveScreenshot(`${name}-${screen + 1}.png`);
-        }
-
-        // Script scrolling can't pan a phone screen across a page that is wider than it.
-        const right = Math.max(0, size.width - size.screenWidth);
-        const bottom = Math.max(0, size.height - size.lastScroll - size.screenHeight);
-
-        if (right || bottom) {
-          facts.notCompared = { right, bottom };
-        }
+        await compareScreens(page, name, size, facts);
       }
 
       expectNoGatewayErrors(gatewayErrors);

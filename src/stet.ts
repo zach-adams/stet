@@ -13,7 +13,11 @@ import { parseArgs } from 'node:util';
 import { siteDirs, stateRoot, type Run } from './site.ts';
 import { sizes } from './sizes.ts';
 
-type Manifest = { baseURL: string; pages: string[]; replay?: string };
+interface Manifest {
+  baseURL: string;
+  pages: string[];
+  replay?: string;
+}
 
 const root = join(import.meta.dirname, '..');
 const skillsDir = join(root, 'skills');
@@ -55,6 +59,7 @@ function options() {
       },
     });
   } catch (error) {
+    // SAFETY: parseArgs throws an Error when the arguments are invalid.
     return refuse(`${(error as Error).message}\n\n${help}`);
   }
 }
@@ -68,22 +73,28 @@ function lockIsHeld(lock: string) {
   try {
     return process.kill(Number(readFileSync(lock, 'utf8')), 0);
   } catch (error) {
+    // SAFETY: filesystem and process errors from these Node APIs have an optional code.
     return !['ENOENT', 'ESRCH'].includes((error as NodeJS.ErrnoException).code ?? '');
   }
 }
 
-// Overlapping runs overload a local server and replace each other's results, so a site takes one run at a time.
+// Overlapping runs overload a local server and replace each other's results, so a site takes
+// one run at a time.
 function waitForTurn(lock: string) {
   mkdirSync(dirname(lock), { recursive: true });
 
-  for (let told = false; ;) {
+  let told = false;
+
+  while (true) {
     try {
       writeFileSync(lock, String(process.pid), { flag: 'wx' });
       process.on('exit', () => rmSync(lock, { force: true }));
+
       return;
     } catch {
       if (!lockIsHeld(lock)) {
         rmSync(lock, { force: true });
+
         continue;
       }
     }
@@ -103,6 +114,7 @@ function skills(args: string[]) {
 
   if (args[0] === 'get' && args[1] && names.includes(args[1])) {
     console.log(read(args[1]));
+
     return;
   }
 
@@ -171,19 +183,16 @@ if (values.replay) {
 }
 
 const site = new URL(address);
+const LOCAL_HOST =
+  /^(localhost|127\.0\.0\.1|\[::1\])$|\.(local|test|localhost|ddev\.site|lndo\.site)$/;
 
-if (
-  !values['allow-live'] &&
-  !/^(localhost|127\.0\.0\.1|\[::1\])$|\.(local|test|localhost|ddev\.site|lndo\.site)$/.test(
-    site.hostname,
-  )
-) {
+if (!values['allow-live'] && !LOCAL_HOST.test(site.hostname)) {
   refuse(
     `${site.hostname} doesn't look like a local site. Use a live site only when the user asks for that run, then add --allow-live.`,
   );
 }
 
-const pageOf = (page: string) => {
+function pageOf(page: string) {
   const url = new URL(page, site.origin);
 
   if (url.origin !== site.origin) {
@@ -191,18 +200,20 @@ const pageOf = (page: string) => {
   }
 
   return url.pathname + url.search;
-};
+}
 
 const dirs = siteDirs(site.origin);
 
 waitForTurn(join(dirs.state, 'run.lock'));
 
 const manifest = readManifest(dirs.manifest);
-const named = rest.length
-  ? rest.map(pageOf)
-  : site.pathname + site.search === '/'
-    ? []
-    : [pageOf(address)];
+let named: string[] = [];
+
+if (rest.length) {
+  named = rest.map(pageOf);
+} else if (site.pathname + site.search !== '/') {
+  named = [pageOf(address)];
+}
 
 if (command === 'compare' && !manifest) {
   refuse(
@@ -211,7 +222,11 @@ if (command === 'compare' && !manifest) {
 }
 
 const saving = command === 'save-references';
-const pages = saving ? (named.length ? named : ['/']) : named.length ? named : manifest!.pages;
+let pages = named;
+
+if (!pages.length) {
+  pages = saving ? ['/'] : (manifest?.pages ?? []);
+}
 
 if (saving && !values['user-approved']) {
   const existing = pages.filter((page) => manifest?.pages.includes(page));
@@ -224,7 +239,7 @@ if (saving && !values['user-approved']) {
 }
 
 if (!saving) {
-  const unknown = pages.filter((page) => !manifest!.pages.includes(page));
+  const unknown = pages.filter((page) => !manifest?.pages.includes(page));
 
   if (unknown.length) {
     refuse(
@@ -234,10 +249,12 @@ if (!saving) {
 }
 
 // Patterns add up, because replacing one would block what other saved pages recorded under it.
-const replay =
-  values.replay && manifest?.replay && manifest.replay !== values.replay
-    ? `${manifest.replay}|${values.replay}`
-    : (values.replay ?? manifest?.replay);
+let replay = values.replay ?? manifest?.replay;
+
+if (values.replay && manifest?.replay && manifest.replay !== values.replay) {
+  replay = `${manifest.replay}|${values.replay}`;
+}
+
 const run: Run = { baseURL: site.origin, pages, replay, saving, full: Boolean(values.full) };
 const args = ['test'];
 
@@ -261,10 +278,11 @@ if (saving) {
   if (result.status === 0) {
     cpSync(dirs.candidate, dirs.saved, { recursive: true });
     mkdirSync(dirs.state, { recursive: true });
-    writeFileSync(
-      dirs.manifest,
-      `${JSON.stringify({ baseURL: site.origin, pages: [...new Set([...(manifest?.pages ?? []), ...pages])], replay } satisfies Manifest, null, 2)}\n`,
-    );
+
+    const savedPages = [...new Set([...(manifest?.pages ?? []), ...pages])];
+    const updated: Manifest = { baseURL: site.origin, pages: savedPages, replay };
+
+    writeFileSync(dirs.manifest, `${JSON.stringify(updated, null, 2)}\n`);
     console.log('References saved.');
   } else {
     console.log('No references changed, because not everything could be saved.');
