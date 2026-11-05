@@ -1,10 +1,15 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
-import { expectNoGatewayErrors, freezeThirdParties, loadEverything, measure, scrollAndHold, watchGatewayErrors } from './capture.ts';
-import { explainPaint, readPaintRecord } from './paint.ts';
+import { expectNoGatewayErrors, freezeThirdParties, makeRepeatable, measure, openPage, scrollAndHold, watchGatewayErrors } from './capture.ts';
+import { changedPoints, explainPaint, paintReader, paintSummary, type PaintRecord } from './paint.ts';
 import { referencesDir, run } from './run.ts';
+import { explainStates, namesAt, stateHashes, walkStates, type State } from './states.ts';
+
+/** Stored with the references, only to explain a failure. */
+type Record = { rest: PaintRecord; states: State[] };
 
 for (const path of run.pages) {
   test(path, async ({ page, context }, info) => {
@@ -13,15 +18,17 @@ for (const path of run.pages) {
     const reference = (suffix: string) => join(referencesDir, info.project.name, `${name}${suffix}`);
     const hosts = await freezeThirdParties(context, reference('.har'));
     const gatewayErrors = watchGatewayErrors(context);
-    const facts: { blocked?: string[]; replayed?: string[]; redirected?: string[]; paint?: string[]; gatewayErrors?: number; notCompared?: { right: number; bottom: number } } = {};
+    const facts: { blocked?: string[]; replayed?: string[]; redirected?: string[]; paint?: string[]; states?: string[]; notDriven?: string[]; videos?: number; gatewayErrors?: number; notCompared?: { right: number; bottom: number } } = {};
+
+    await makeRepeatable(page);
 
     try {
-      const response = await page.goto(path);
+      const response = await openPage(page, path, gatewayErrors, info.parallelIndex);
 
       expect(response?.ok(), `${path} returned ${response?.status()}`).toBe(true);
       // A site may redirect unknown addresses home, which would save the wrong page as this page's reference.
       expect(response?.request().redirectedFrom(), `${path} redirected to ${page.url()}`).toBeNull();
-      await loadEverything(page, gatewayErrors);
+
       // Finishing an animation can change the page's height, so settle before measuring it.
       await scrollAndHold(page, 0);
 
@@ -32,23 +39,50 @@ for (const path of run.pages) {
       // Pixels can't see where a link goes or what a control is called.
       expect.soft(`${await page.locator('body').ariaSnapshot()}\n`).toMatchSnapshot(`${name}-aria.txt`);
 
-      const paint = await readPaintRecord(page);
-      const commandsFile = reference('-paint-commands.json.gz');
+      const readPaint = await paintReader(page);
+      const rest = await readPaint();
+      const recordFile = reference('-record.json.gz');
+      const saved: Record | undefined = !run.saving && existsSync(recordFile) ? JSON.parse(gunzipSync(readFileSync(recordFile)).toString()) : undefined;
+
+      if (saved && paintSummary(saved.rest) !== paintSummary(rest)) {
+        const names = await namesAt(page, changedPoints(saved.rest, rest));
+
+        facts.paint = [...(names.length ? [`Near ${names.join(', ')}.`] : []), ...explainPaint(saved.rest, rest)];
+      }
+
+      facts.videos = rest.lines.filter((line) => line.endsWith(' video')).length;
+      expect.soft(paintSummary(rest)).toMatchSnapshot(`${name}-paint.txt`);
+
+      // Pressing things must not change the site.
+      await context.route('**/*', (route) => (route.request().method() === 'GET' ? route.fallback() : route.abort()));
+
+      const every = run.saving || run.full;
+      const { pools, controls, notDriven } = await walkStates(page, readPaint, every);
+      const states = [...pools, ...controls];
+
+      facts.notDriven = notDriven;
 
       if (run.saving) {
-        mkdirSync(dirname(commandsFile), { recursive: true });
-        writeFileSync(commandsFile, paint.commands);
-      } else if (existsSync(commandsFile) && existsSync(info.snapshotPath(`${name}-paint.txt`))) {
-        const summary = readFileSync(info.snapshotPath(`${name}-paint.txt`), 'utf8');
+        mkdirSync(dirname(recordFile), { recursive: true });
+        writeFileSync(recordFile, gzipSync(JSON.stringify({ rest, states } satisfies Record)));
+      } else if (saved) {
+        const compared = every ? saved.states : saved.states.filter(({ group }) => group === 'pool');
 
-        if (summary !== paint.summary) {
-          facts.paint = explainPaint(summary, paint.summary, readFileSync(commandsFile), paint.commands);
+        if (stateHashes(compared) !== stateHashes(states)) {
+          facts.states = await explainStates(page, { rest: saved.rest, states: compared }, states, rest);
         }
       }
 
-      expect.soft(paint.summary).toMatchSnapshot(`${name}-paint.txt`);
+      // Labels aren't part of the verdict, so a control renamed or moved in the markup passes as long as every state still renders the same.
+      expect.soft(stateHashes(pools)).toMatchSnapshot(`${name}-pools.txt`);
 
-      if (run.saving || run.full) {
+      if (every) {
+        expect.soft(stateHashes(controls)).toMatchSnapshot(`${name}-controls.txt`);
+
+        // A load of their own, so that every read above takes the same path whether or not screenshots follow.
+        await openPage(page, path, gatewayErrors, info.parallelIndex);
+        await scrollAndHold(page, 0);
+
         // A full-page screenshot resizes the page, which reloads responsive images and moves carousels, so take one screen at a time.
         const stops = Array.from({ length: Math.ceil(size.lastScroll / size.screenHeight) + 1 }, (_, screen) =>
           Math.min(screen * size.screenHeight, size.lastScroll),
@@ -69,12 +103,11 @@ for (const path of run.pages) {
       }
 
       expectNoGatewayErrors(gatewayErrors);
-      expect(await measure(page), `${path} changed size during capture`).toEqual(size);
     } finally {
       facts.blocked = [...hosts.blocked];
       facts.replayed = [...hosts.replayed];
       facts.redirected = [...hosts.redirected];
-      facts.gatewayErrors = gatewayErrors();
+      facts.gatewayErrors = gatewayErrors.count();
       await info.attach('stet-facts', { body: JSON.stringify(facts), contentType: 'application/json' });
     }
   });

@@ -10,7 +10,7 @@ Stet is a local visual regression checker for WordPress sites. The `stet` comman
 - Capture one screen at a time and never with `fullPage`, which disturbs the page. [docs/design.md](docs/design.md) has the measurements.
 - Get user approval for any mask, exclusion or tolerance, and make it visible in the report.
 - Keep client names and URLs out of tracked files, including tests and docs. Use `example.test` or generic descriptions.
-- Prefer what Playwright already provides over new code or dependencies. `src/stet.ts` only names commands and hands them to Playwright Test.
+- Prefer what Playwright already provides over new code or dependencies. `src/stet.ts` only names commands, takes the per-site lock and hands them to Playwright Test.
 - Keep `skills/core/SKILL.md` matching what the commands do and what they print.
 
 ## Checks

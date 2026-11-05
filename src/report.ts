@@ -6,7 +6,7 @@ const count = (total: number, noun: string) => `${total} ${noun}${total === 1 ? 
 const plain = (error: TestError) => (error.message ?? String(error.value)).replace(/\u001b\[[0-9;]*m/g, '');
 const capped = (lines: string[], limit: number) => (lines.length > limit ? [...lines.slice(0, limit), `  and ${lines.length - limit} more`] : lines);
 
-type Facts = { blocked?: string[]; replayed?: string[]; redirected?: string[]; paint?: string[]; gatewayErrors?: number; notCompared?: { right: number; bottom: number } };
+type Facts = { blocked?: string[]; replayed?: string[]; redirected?: string[]; paint?: string[]; states?: string[]; notDriven?: string[]; videos?: number; gatewayErrors?: number; notCompared?: { right: number; bottom: number } };
 
 const factsOf = (result: TestResult): Facts =>
   JSON.parse(result.attachments.find((attachment) => attachment.name === 'stet-facts')?.body?.toString() ?? '{}');
@@ -19,6 +19,7 @@ function describe(result: TestResult) {
   const text: string[] = [];
   let changed = false;
   let compared = false;
+  let stateChanged = false;
 
   for (const message of result.errors.map(plain)) {
     const snapshot = message.match(/Snapshot: (\S+)/)?.[1] ?? '';
@@ -43,6 +44,9 @@ function describe(result: TestResult) {
     } else if (snapshot.endsWith('-paint.txt')) {
       changed = true;
       lines.push(...(factsOf(result).paint ?? ['Painted differently.']));
+    } else if (snapshot.endsWith('-pools.txt') || snapshot.endsWith('-controls.txt')) {
+      changed = true;
+      stateChanged = true;
     } else if (pixels && screen) {
       changed = true;
       differ.push(`${screen[1]} (${Number(pixels[1]).toLocaleString('en-US')} pixels)`);
@@ -54,6 +58,10 @@ function describe(result: TestResult) {
 
   if (text.length) {
     lines.push('Text, links or controls changed:', ...capped(text, 12));
+  }
+
+  if (stateChanged) {
+    lines.push(...(factsOf(result).states ?? ['A hover, focus, pressed or open state changed.']));
   }
 
   if (differ.length) {
@@ -92,6 +100,8 @@ export default class Report implements Reporter {
   private blocked = new Set<string>();
   private replayed = new Set<string>();
   private redirected = new Set<string>();
+  private notDriven = new Map<string, Set<string>>();
+  private videos = 0;
   private wider = new Map<string, { pages: number; right: number; bottom: number }>();
 
   onBegin(_config: FullConfig, suite: Suite) {
@@ -108,7 +118,7 @@ export default class Report implements Reporter {
     console.log(
       run.saving
         ? `Capturing ${pages} of ${run.baseURL} at ${sizes}. References change only if every capture succeeds.`
-        : `Comparing ${pages} of ${run.baseURL} with saved references at ${sizes}. No references change.`,
+        : `Comparing ${pages} of ${run.baseURL} with saved references at ${sizes}. No references change. Covers each page at rest, with closed details open, and with every element hovered, focused and pressed${run.full ? ', then every menu, tab, dialog and other control, and real screenshots' : ''}.`,
     );
   }
 
@@ -119,6 +129,12 @@ export default class Report implements Reporter {
     for (const host of facts.blocked ?? []) this.blocked.add(host);
     for (const host of facts.replayed ?? []) this.replayed.add(host);
     for (const host of facts.redirected ?? []) this.redirected.add(host);
+
+    this.videos = Math.max(this.videos, facts.videos ?? 0);
+
+    for (const control of facts.notDriven ?? []) {
+      this.notDriven.set(test.title, (this.notDriven.get(test.title) ?? new Set()).add(control));
+    }
 
     if (facts.notCompared) {
       const wider = this.wider.get(size) ?? { pages: 0, right: 0, bottom: 0 };
@@ -185,6 +201,14 @@ export default class Report implements Reporter {
 
     for (const [size, { pages, right, bottom }] of this.wider) {
       console.log(`At ${size}, ${count(pages, 'page')} ${pages === 1 ? 'is' : 'are'} wider than the screen, so up to ${right}px on the right and ${bottom}px at the bottom appear only in the paint record, not the screenshots.`);
+    }
+
+    for (const [page, controls] of this.notDriven) {
+      console.log(`Not driven on ${page}, so not compared: ${capped([...controls].map((name) => `"${name}"`), 5).join(', ')}.`);
+    }
+
+    if (this.videos) {
+      console.log(`Video draws outside the paint record, so videos are compared by size and place, plus their first frame with --full.`);
     }
 
     if (this.changedPages.size && !run.saving) {

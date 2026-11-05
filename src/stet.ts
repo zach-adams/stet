@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { siteDirs, stateRoot, type Run } from './site.ts';
 import { sizes } from './sizes.ts';
@@ -14,8 +14,8 @@ const sizeNames = sizes.map((size) => size.name).join(', ');
 const help = `Stet checks whether a change altered what a local site renders, by comparing it with references saved from a known-good state. AI agents: run \`stet skills get core\` first.
 
   stet save-references <url> [page ...]   Save how these pages render now, at all six sizes.
-  stet compare <url> [page ...]           Compare with the references at desktop and small-phone. Never changes references.
-  stet compare <url> --full               Compare at all six sizes and add real screenshots, before calling a change done.
+  stet compare <url> [page ...]           Compare with the references at desktop and small-phone, at rest and with hover, focus and closed details open. Never changes references.
+  stet compare <url> --full               Also compare all six sizes, every menu, tab and dialog, and real screenshots, before calling a change done.
   stet list                               Show sites and pages with references.
   stet skills get core                    Print how to use Stet, written for AI agents.
 
@@ -53,6 +53,40 @@ function options() {
 
 function readManifest(file: string): Manifest | undefined {
   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined;
+}
+
+// A run that was killed can't remove its lock, so a lock whose process is gone doesn't count.
+function lockIsHeld(lock: string) {
+  try {
+    return process.kill(Number(readFileSync(lock, 'utf8')), 0);
+  } catch (error) {
+    return !['ENOENT', 'ESRCH'].includes((error as NodeJS.ErrnoException).code ?? '');
+  }
+}
+
+// Overlapping runs overload a local server and replace each other's results, so a site takes one run at a time.
+function waitForTurn(lock: string) {
+  mkdirSync(dirname(lock), { recursive: true });
+
+  for (let told = false; ; ) {
+    try {
+      writeFileSync(lock, String(process.pid), { flag: 'wx' });
+      process.on('exit', () => rmSync(lock, { force: true }));
+      return;
+    } catch {
+      if (!lockIsHeld(lock)) {
+        rmSync(lock, { force: true });
+        continue;
+      }
+    }
+
+    if (!told) {
+      console.error('Waiting for another Stet run on this site to finish.');
+      told = true;
+    }
+
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+  }
 }
 
 function skills(args: string[]) {
@@ -141,6 +175,9 @@ const pageOf = (page: string) => {
 };
 
 const dirs = siteDirs(site.origin);
+
+waitForTurn(join(dirs.state, 'run.lock'));
+
 const manifest = readManifest(dirs.manifest);
 const named = rest.length ? rest.map(pageOf) : site.pathname + site.search === '/' ? [] : [pageOf(address)];
 
