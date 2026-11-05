@@ -138,7 +138,8 @@ for (const path of run.pages) {
         }
       }
 
-      facts.videos = rest.lines.filter((line) => line.endsWith(' video')).length;
+      // A paint line's fourth field is its pixel hash, or video for a layer with none.
+      facts.videos = rest.lines.filter((line) => line.split(' ')[3] === 'video').length;
       expect.soft(paintSummary(rest)).toMatchSnapshot(`${name}-paint.txt`);
 
       // Pressing things must not change the site.

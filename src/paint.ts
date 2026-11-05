@@ -113,21 +113,36 @@ function describeDrawing(log: Command[]) {
   return drawn;
 }
 
+/** What Chromium resolves a pseudo-element's node to. */
+interface ResolvedPseudoElement {
+  element: Element;
+  type: string;
+}
+
 /**
  * What the compositor applies on top of a layer's own pixels, from the element that owns it and
  * every element around it. None of it is in the paint record. Runs in the page.
  */
-function compositedEffects(this: Node) {
+function compositedEffects(this: Node | ResolvedPseudoElement) {
+  const styles: CSSStyleDeclaration[] = [];
+  let element: Element | null;
+
+  if (this instanceof Node) {
+    element = this instanceof Element ? this : this.parentElement;
+  } else {
+    styles.push(getComputedStyle(this.element, this.type));
+    element = this.element;
+  }
+
+  while (element) {
+    styles.push(getComputedStyle(element));
+    element = element.parentElement;
+  }
+
   let opacity = 1;
   const others: string[] = [];
 
-  for (
-    let element = this instanceof Element ? this : this.parentElement;
-    element;
-    element = element.parentElement
-  ) {
-    const style = getComputedStyle(element);
-
+  for (const style of styles) {
     opacity *= Number(style.opacity);
 
     for (const value of [
@@ -144,7 +159,7 @@ function compositedEffects(this: Node) {
   }
 
   if (opacity !== 1) {
-    others.unshift(`opacity ${opacity.toFixed(3)}`);
+    others.unshift(`opacity ${opacity}`);
   }
 
   return others.join(', ');

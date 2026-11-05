@@ -20,6 +20,7 @@ const clean = {
   href: '/about/',
   slide: 'Second slide',
   opacity: 1,
+  badgeOpacity: 0.5,
   hoverColor: 'rgb(0, 0, 200)',
   focusRing: 'rgb(0, 0, 200)',
   answer: 'An answer',
@@ -64,6 +65,8 @@ ${state.wrapped ? `<div>${heading}</div>` : heading}
 ${state.moving ? `<script>let n = 0; setInterval(() => { document.querySelector('h1').style.marginTop = ++n + 'px'; }, 16);</script>` : ''}
 <style>.cta:hover { color: ${state.hoverColor} } .cta:focus-visible { outline: 3px solid ${state.focusRing} } html[data-input="mouse"] :focus { outline: none } .panel { display: none } .menu.open .panel { display: block }</style>
 <p><a class="cta" href="/cta/">Call to action</a></p>
+<style>.badge { position: relative; width: 120px } .badge::before { content: ''; position: absolute; inset: 0; background: #c00; will-change: transform; opacity: ${state.badgeOpacity} }</style>
+<p class="badge">Badge</p>
 <details name="faq"><summary>First question</summary><p>${state.answer}</p><button id="nested" aria-expanded="false">More</button><p id="nested-text" hidden>${state.behindNestedButton}</p></details>
 <details name="faq"><summary>Second question</summary><p>Another answer</p></details>
 ${state.wrapped ? '<div>' : ''}
@@ -292,6 +295,11 @@ for (const [name, change, expected] of [
     /state "focus and press on every element"/,
   ],
   [
+    'opacity the compositor applies to a ::before',
+    { badgeOpacity: 0.6 },
+    /is composited with opacity 0\.6, instead of opacity 0\.5/,
+  ],
+  [
     'text inside closed details',
     { answer: 'A different answer' },
     /state "all 2 closed details open"/,
@@ -328,7 +336,7 @@ test('fails on opacity the compositor applies, and --full sees it on screen', as
 
   state = { ...clean };
   assert.equal(quick.status, 1, quick.output);
-  assert.match(quick.output, /is composited with opacity 0\.900, instead of none/);
+  assert.match(quick.output, /is composited with opacity 0\.9, instead of none/);
   assert.equal(full.status, 1, full.output);
   assert.match(full.output, /Screens that differ/);
 });
