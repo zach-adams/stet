@@ -172,10 +172,14 @@ export default class Report implements Reporter {
       return;
     }
 
+    // Saving uses the same tolerance to decide that two screenshots in a row match.
+    const tolerance =
+      'Real screenshots count a color 1 level off out of 255, and some up to 3 off in blue, as the same.';
+
     console.log(
       run.saving
-        ? `Capturing ${pages} of ${run.baseURL} at ${sizes}. References change only if every capture succeeds.`
-        : `Comparing ${pages} of ${run.baseURL} with saved references at ${sizes}. No references change. Covers each page at rest, with closed details open, and with every element hovered, focused and pressed${run.full ? ', then every menu, tab, dialog and other control, and real screenshots. Real screenshots pass a color 1 level off out of 255, and some up to 3 off in blue' : ''}.`,
+        ? `Capturing ${pages} of ${run.baseURL} at ${sizes}. References change only if every capture succeeds. ${tolerance}`
+        : `Comparing ${pages} of ${run.baseURL} with saved references at ${sizes}. No references change. Covers each page at rest, with closed details open, and with every element hovered, focused and pressed${run.full ? `, then every menu, tab, dialog and other control, and real screenshots. ${tolerance}` : '.'}`,
     );
   }
 
