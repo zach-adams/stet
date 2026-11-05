@@ -21,6 +21,7 @@ const clean = {
   slide: 'Second slide',
   opacity: 1,
   hoverColor: 'rgb(0, 0, 200)',
+  focusRing: 'rgb(0, 0, 200)',
   answer: 'An answer',
   menuOpens: true,
   tabText: 'Second tab',
@@ -61,7 +62,7 @@ ${state.wrapped ? `<div>${heading}</div>` : heading}
 <div style="width:300px">First slide</div><div style="width:300px">${state.slide}</div></div></div>
 <script src="http://127.0.0.1:${port}/third.js"></script>
 ${state.moving ? `<script>let n = 0; setInterval(() => { document.querySelector('h1').style.marginTop = ++n + 'px'; }, 16);</script>` : ''}
-<style>.cta:hover { color: ${state.hoverColor} } .panel { display: none } .menu.open .panel { display: block }</style>
+<style>.cta:hover { color: ${state.hoverColor} } .cta:focus-visible { outline: 3px solid ${state.focusRing} } html[data-input="mouse"] :focus { outline: none } .panel { display: none } .menu.open .panel { display: block }</style>
 <p><a class="cta" href="/cta/">Call to action</a></p>
 <details name="faq"><summary>First question</summary><p>${state.answer}</p><button id="nested" aria-expanded="false">More</button><p id="nested-text" hidden>${state.behindNestedButton}</p></details>
 <details name="faq"><summary>Second question</summary><p>Another answer</p></details>
@@ -80,6 +81,8 @@ ${state.wrapped ? '</div>' : ''}
 ${Array.from({ length: state.extraControls }, (_, index) => `<button class="extra">Extra ${index}</button>`).join('')}
 <p id="autoplay">Slide 0</p>
 <script>
+  addEventListener('click', () => { document.documentElement.dataset.input = 'mouse'; }, true);
+  addEventListener('keydown', () => { document.documentElement.dataset.input = 'keyboard'; }, true);
   const menu = document.querySelector('.menu');
   ${state.menuOpens ? `menu.addEventListener('mouseenter', () => setTimeout(() => menu.classList.add('open'), 300));` : ''}
   menu.addEventListener('mouseleave', () => setTimeout(() => menu.classList.remove('open'), 300));
@@ -282,6 +285,11 @@ for (const [name, change, expected] of [
     'a one-step color change only hovering shows',
     { hoverColor: 'rgb(0, 0, 201)' },
     /state "hover on every element":\n\s+Near a "Call to action"/,
+  ],
+  [
+    'a focus ring that the page hides after a click',
+    { focusRing: 'rgb(0, 0, 201)' },
+    /state "focus and press on every element"/,
   ],
   [
     'text inside closed details',

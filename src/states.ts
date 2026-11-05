@@ -504,6 +504,18 @@ export async function walkStates(
   }
 
   for (const [label, pool] of Object.entries(POOLS)) {
+    // A page that hides focus rings after mouse input, as some themes do, takes the clicks that
+    // opened details for a mouse. A real Tab makes the focus reads keyboard use, and the forced
+    // states decide what has focus.
+    if (label === 'focus and press') {
+      await page.keyboard.press('Tab');
+      await page.evaluate(() => {
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+      });
+    }
+
     const matched = await forced.apply(pool);
 
     // A page with no focusable containers has nothing to show in that read, and it's the only
