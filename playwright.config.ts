@@ -18,8 +18,10 @@ export default defineConfig({
   use: { baseURL: run.baseURL, ignoreHTTPSErrors: true },
   expect: {
     timeout: 30_000,
-    // Any changed pixel fails. Raise this only for a specific, reported reason.
-    toHaveScreenshot: { threshold: 0 },
+    // A logo on a few phone screens varies by one color level between loads, and the paint record
+    // still compares exact pixels. This passes every color 1 level off out of 255, and some up to 3
+    // off in blue, as the report says. Raise it only for a specific, reported reason.
+    toHaveScreenshot: { threshold: 0.004 },
   },
   projects: sizes,
 });

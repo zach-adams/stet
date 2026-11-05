@@ -28,7 +28,7 @@ Stet compares what a local site renders with references saved from a known-good 
    stet compare https://site.test /about/      # only this page
    ```
 
-3. Compare everything before calling a change done. This adds the other five sizes, real screenshots, and every menu, tab, dialog and other control, each driven for real. It takes up to about 45 seconds per page and size, depending on how many controls it has:
+3. Compare everything before calling a change done. This adds the other five sizes, real screenshots, and every menu, tab, dialog and other control, each driven for real. Real screenshots pass a color 1 level off out of 255, and some up to 3 off in blue. It takes up to about 45 seconds per page and size, depending on how many controls it has:
 
    ```bash
    stet compare https://site.test --full
