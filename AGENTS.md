@@ -6,7 +6,7 @@ Stet is a local visual regression checker for WordPress sites. The `stet` comman
 
 - Run it against local sites. Use a production or live URL only when the user asks for that run, and keep the refusal that requires `--allow-live`.
 - Fix or report a failing `compare`. Pass `--user-approved` to `save-references` only after the user approves replacing those references, because an agent that can replace references can approve its own regressions.
-- Let pixels decide pass or fail. Geometry, styles, paint commands and element labels may explain a failure but must never turn it into a pass. The aria snapshot is the exception, because it checks what pixels can't see.
+- Let pixels decide pass or fail. Geometry, styles, paint commands and element labels may explain a failure but must never turn it into a pass. The aria snapshot and the counts of cursors, clicks, transitions and animations are the exceptions, because they check what pixels can't see.
 - Capture one screen at a time and never with `fullPage`, which disturbs the page. [docs/design.md](docs/design.md) has the measurements.
 - Get user approval for any mask, exclusion or tolerance, and make it visible in the report.
 - Keep client names and URLs out of tracked files, including tests and docs. Use `example.test` or generic descriptions.

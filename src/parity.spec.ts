@@ -22,7 +22,14 @@ import {
 } from './paint.ts';
 import type { Facts } from './report.ts';
 import { referencesDir, run } from './run.ts';
-import { explainStates, namesAt, stateHashes, walkStates, type State } from './states.ts';
+import {
+  explainStates,
+  namesAt,
+  readInteraction,
+  stateHashes,
+  walkStates,
+  type State,
+} from './states.ts';
 
 type PageSize = Awaited<ReturnType<typeof measure>>;
 
@@ -119,6 +126,7 @@ for (const path of run.pages) {
       const size = await measure(page);
 
       await compareSizeAndAria(page, name, size);
+      expect.soft(await readInteraction(page)).toMatchSnapshot(`${name}-interaction.txt`);
 
       const readPaint = await paintReader(page);
       const rest = await readPaint();

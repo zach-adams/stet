@@ -22,6 +22,9 @@ const clean = {
   opacity: 1,
   badgeOpacity: 0.5,
   hoverColor: 'rgb(0, 0, 200)',
+  hoverCursor: 'pointer',
+  buttonClicks: 'auto',
+  ctaTransition: '0.2s',
   focusRing: 'rgb(0, 0, 200)',
   answer: 'An answer',
   menuOpens: true,
@@ -63,7 +66,7 @@ ${state.wrapped ? `<div>${heading}</div>` : heading}
 <div style="width:300px">First slide</div><div style="width:300px">${state.slide}</div></div></div>
 <script src="http://127.0.0.1:${port}/third.js"></script>
 ${state.moving ? `<script>let n = 0; setInterval(() => { document.querySelector('h1').style.marginTop = ++n + 'px'; }, 16);</script>` : ''}
-<style>.cta:hover { color: ${state.hoverColor} } .cta:focus-visible { outline: 3px solid ${state.focusRing} } html[data-input="mouse"] :focus { outline: none } .panel { display: none } .menu.open .panel { display: block }</style>
+<style>.cta { transition: color ${state.ctaTransition} } .cta:hover { color: ${state.hoverColor}; cursor: ${state.hoverCursor} } button { pointer-events: ${state.buttonClicks} } .cta:focus-visible { outline: 3px solid ${state.focusRing} } html[data-input="mouse"] :focus { outline: none } .panel { display: none } .menu.open .panel { display: block }</style>
 <p><a class="cta" href="/cta/">Call to action</a></p>
 <style>.badge { position: relative; width: 120px } .badge::before { content: ''; position: absolute; inset: 0; background: #c00; will-change: transform; opacity: ${state.badgeOpacity} }</style>
 <p class="badge">Badge</p>
@@ -298,6 +301,13 @@ for (const [name, change, expected] of [
     'opacity the compositor applies to a ::before',
     { badgeOpacity: 0.6 },
     /is composited with opacity 0\.6, instead of opacity 0\.5/,
+  ],
+  ['a button that stops taking clicks', { buttonClicks: 'none' }, /\+ pointer-events: none on/],
+  ['a slower transition', { ctaTransition: '0.4s' }, /\+ transition: color 0\.4s/],
+  [
+    'a cursor that only hovering shows',
+    { hoverCursor: 'help' },
+    /state "hover on every element":[\s\S]*\+ cursor: help on 1 element/,
   ],
   [
     'text inside closed details',

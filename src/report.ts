@@ -52,6 +52,7 @@ function describe(result: TestResult) {
   const differ: string[] = [];
   const noReference: string[] = [];
   const text: string[] = [];
+  const interaction: string[] = [];
   let changed = false;
   let compared = false;
   let stateChanged = false;
@@ -81,6 +82,11 @@ function describe(result: TestResult) {
       text.push(
         ...message.split('\n').filter((line) => /^ {2}[-+]/.test(line) && !line.startsWith('  @@')),
       );
+    } else if (snapshot.endsWith('-interaction.txt')) {
+      changed = true;
+      interaction.push(
+        ...message.split('\n').filter((line) => /^ {2}[-+]/.test(line) && !line.startsWith('  @@')),
+      );
     } else if (snapshot.endsWith('-paint.txt')) {
       changed = true;
       lines.push(...(facts.paint ?? ['Painted differently.']));
@@ -106,6 +112,10 @@ function describe(result: TestResult) {
 
   if (text.length) {
     lines.push('Text, links or controls changed:', ...capped(text, 12));
+  }
+
+  if (interaction.length) {
+    lines.push('Cursors, clicks, transitions or animations changed:', ...capped(interaction, 12));
   }
 
   if (stateChanged) {

@@ -14,6 +14,7 @@ export interface State {
   group: 'pool' | 'control';
   paint: PaintRecord;
   aria: string;
+  interaction: string;
 }
 
 // A page with more than this is rare, and the report says how many weren't driven.
@@ -44,6 +45,72 @@ const POOLS = {
 /** Playwright's private way to make protocol calls without recording each one. */
 interface CallGrouping {
   _wrapApiCall<T>(calls: () => Promise<T>, options: { internal: boolean }): Promise<T>;
+}
+
+/**
+ * What pixels can't show about how a page responds to a visitor: its cursors, whether clicks reach
+ * an element, and its transitions and animations. Values are counted without naming elements, so
+ * markup can change around them, and an inherited cursor or pointer-events value isn't counted
+ * again. Runs in the page.
+ */
+function interactionStyles() {
+  const counts = new Map<string, number>();
+  const styles = new Map<Element, CSSStyleDeclaration>();
+  const record = (
+    style: CSSStyleDeclaration,
+    parent: CSSStyleDeclaration | undefined,
+    on: string,
+  ) => {
+    const lines: string[] = [];
+
+    for (const property of ['cursor', 'pointer-events']) {
+      const value = style.getPropertyValue(property);
+
+      if (value !== (parent?.getPropertyValue(property) ?? 'auto')) {
+        lines.push(`${property}: ${value}`);
+      }
+    }
+
+    if (/[1-9]/.test(style.transitionDuration + style.transitionDelay)) {
+      lines.push(`transition: ${style.transition}`);
+    }
+
+    if (style.animationName !== 'none') {
+      lines.push(`animation: ${style.animation}`);
+    }
+
+    for (const line of lines) {
+      counts.set(`${on}${line}`, (counts.get(`${on}${line}`) ?? 0) + 1);
+    }
+  };
+
+  for (const element of document.querySelectorAll('*')) {
+    if (!element.checkVisibility()) {
+      continue;
+    }
+
+    const style = getComputedStyle(element);
+
+    styles.set(element, style);
+    record(style, element.parentElement ? styles.get(element.parentElement) : undefined, '');
+
+    for (const pseudo of ['::before', '::after']) {
+      const pseudoStyle = getComputedStyle(element, pseudo);
+
+      if (!['none', 'normal'].includes(pseudoStyle.content)) {
+        record(pseudoStyle, style, `${pseudo} `);
+      }
+    }
+  }
+
+  return [...counts]
+    .map(([line, count]) => `${line} on ${count} ${count === 1 ? 'element' : 'elements'}\n`)
+    .sort()
+    .join('');
+}
+
+export function readInteraction(page: Page) {
+  return page.evaluate(interactionStyles);
 }
 
 // Keep one document for the whole walk, because Chromium files forced states under node ids
@@ -487,6 +554,7 @@ export async function walkStates(
       group,
       paint: await readPaint(),
       aria: `${await page.locator('body').ariaSnapshot()}\n`,
+      interaction: await readInteraction(page),
     });
   };
 
@@ -649,8 +717,12 @@ export async function walkStates(
   };
 }
 
-function stateHash({ paint, aria }: State) {
-  return createHash('sha1').update(paintSummary(paint)).update(aria).digest('hex');
+function stateHash({ paint, aria, interaction }: State) {
+  return createHash('sha1')
+    .update(paintSummary(paint))
+    .update(aria)
+    .update(interaction)
+    .digest('hex');
 }
 
 /**
@@ -730,7 +802,10 @@ export async function explainStates(
         lines.push(...explainPaint(before.paint, after.paint).map((line) => `  ${line}`));
       }
 
-      lines.push(...text);
+      lines.push(
+        ...text,
+        ...lineChanges(before.interaction.split('\n'), after.interaction.split('\n')).slice(0, 8),
+      );
       changes.push(lines);
     }
   }

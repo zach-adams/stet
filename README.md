@@ -1,6 +1,6 @@
 # Stet
 
-Stet checks whether a change altered what a local site renders. It compares what each page paints, and what its links and controls say, at rest and in its hover, focus, open and pressed states, with references saved from a known-good state at seven screen sizes, so an agent can run it after each edit during a refactor. The name is the proofreading mark for "let it stand".
+Stet checks whether a change altered what a local site renders. It compares what each page paints, what its links and controls say, and its cursors, clicks, transitions and animations, at rest and in its hover, focus, open and pressed states, with references saved from a known-good state at seven screen sizes, so an agent can run it after each edit during a refactor. The name is the proofreading mark for "let it stand".
 
 A pass means nothing changed in what Stet captured on the saved pages and sizes. It says nothing about states or pages Stet didn't capture. [docs/design.md](docs/design.md) covers what it decides, its limits and what comes next.
 

@@ -57,6 +57,7 @@ changed: /about/ at desktop
 - `no longer changes anything` means a control stopped working. `is gone` and `is new` mean a control was removed or added.
 - `painted differently` lists the drawing commands that changed, with their position and color. Coordinates are in that layer's own space.
 - `Its drawing commands match` means the position and color stayed the same but the content of a text or image didn't.
+- `Cursors, clicks, transitions or animations changed` lists counts of `cursor` and `pointer-events` values, transitions and animations that changed, such as `+ pointer-events: none on 3 elements`. Pixels can't show these, so they can fail a page whose screens all match.
 - `Layers changed` means Chromium split the page differently, often from `position`, `transform` or `will-change`. Run `--full` to see whether the pixels differ.
 - `Text, links or controls changed` is a diff of the accessibility tree. A removed `href` or renamed control shows up here even when no pixel changes.
 - `Screens that differ` and `Images` appear with `--full`. Open the `-diff.png` files to see the change. If that's the only line and the diff shows just the edges of text in one box, it may be text landing a fraction of a pixel differently rather than a change. Report it instead of calling it a regression or a pass.
