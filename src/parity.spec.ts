@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
 import { expect, test, type Page } from '@playwright/test';
 import {
+  drawFrame,
   expectNoGatewayErrors,
   freezeThirdParties,
   makeRepeatable,
@@ -47,6 +48,22 @@ async function compareSizeAndAria(page: Page, name: string, size: PageSize) {
   expect.soft(`${await page.locator('body').ariaSnapshot()}\n`).toMatchSnapshot(`${name}-aria.txt`);
 }
 
+// toHaveScreenshot decodes both images and compares every pixel even when they're the same file.
+async function isReferenceCopy(page: Page, file: string) {
+  const reference = test.info().snapshotPath(file, { kind: 'screenshot' });
+
+  if (run.saving || !existsSync(reference)) {
+    return false;
+  }
+
+  // The same frame wait and capture that toHaveScreenshot makes.
+  await drawFrame(page);
+
+  const screen = await page.screenshot({ animations: 'disabled', scale: 'css' });
+
+  return screen.equals(readFileSync(reference));
+}
+
 async function compareScreens(page: Page, name: string, size: PageSize, facts: Facts) {
   // A full-page screenshot resizes the page, which reloads responsive images and moves
   // carousels, so take one screen at a time.
@@ -56,8 +73,13 @@ async function compareScreens(page: Page, name: string, size: PageSize, facts: F
   );
 
   for (const [screen, top] of stops.entries()) {
+    const file = `${name}-${screen + 1}.png`;
+
     await scrollAndHold(page, top);
-    await expect.soft(page).toHaveScreenshot(`${name}-${screen + 1}.png`);
+
+    if (!(await isReferenceCopy(page, file))) {
+      await expect.soft(page).toHaveScreenshot(file);
+    }
   }
 
   // Script scrolling can't pan a phone screen across a page that is wider than it.
