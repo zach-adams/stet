@@ -67,7 +67,7 @@ ${state.wrapped ? `<div>${heading}</div>` : heading}
 <script src="http://127.0.0.1:${port}/third.js"></script>
 ${state.moving ? `<script>let n = 0; setInterval(() => { document.querySelector('h1').style.marginTop = ++n + 'px'; }, 16);</script>` : ''}
 <style>.cta { transition: color ${state.ctaTransition} } .cta:hover { color: ${state.hoverColor}; cursor: ${state.hoverCursor} } button { pointer-events: ${state.buttonClicks} } .cta:focus-visible { outline: 3px solid ${state.focusRing} } html[data-input="mouse"] :focus { outline: none } .panel { display: none } .menu.open .panel { display: block }</style>
-<p><a class="cta" href="/cta/">Call to action</a></p>
+<p><a class="cta" href="/cta/">${state.wrapped ? '<span style="display: contents"><span>Call to action</span></span>' : 'Call to action'}</a></p>
 <style>.badge { position: relative; width: 120px } .badge::before { content: ''; position: absolute; inset: 0; background: #c00; will-change: transform; opacity: ${state.badgeOpacity} }</style>
 <p class="badge">Badge</p>
 <details name="faq"><summary>First question</summary><p>${state.answer}</p><button id="nested" aria-expanded="false">More</button><p id="nested-text" hidden>${state.behindNestedButton}</p></details>

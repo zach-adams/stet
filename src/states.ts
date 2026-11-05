@@ -55,7 +55,6 @@ interface CallGrouping {
  */
 function interactionStyles() {
   const counts = new Map<string, number>();
-  const styles = new Map<Element, CSSStyleDeclaration>();
   const record = (
     style: CSSStyleDeclaration,
     parent: CSSStyleDeclaration | undefined,
@@ -90,9 +89,10 @@ function interactionStyles() {
     }
 
     const style = getComputedStyle(element);
+    // The parent may have no box of its own, as with display: contents, and still pass values on.
+    const parent = element.parentElement ? getComputedStyle(element.parentElement) : undefined;
 
-    styles.set(element, style);
-    record(style, element.parentElement ? styles.get(element.parentElement) : undefined, '');
+    record(style, parent, '');
 
     for (const pseudo of ['::before', '::after']) {
       const pseudoStyle = getComputedStyle(element, pseudo);
