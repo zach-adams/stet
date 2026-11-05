@@ -1,23 +1,27 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-export type Site = {
+/** What the `stet` command hands to the Playwright run. */
+export type Run = {
   baseURL: string;
   pages: string[];
-  /** Third-party requests to save with the references and replay. All other third parties are blocked. */
-  replay?: RegExp;
+  /** Third-party scripts and requests to save and replay. Fonts, stylesheets and images always are. */
+  replay?: string;
+  saving: boolean;
+  /** Also compare real screenshots, which see compositing effects the paint record can't. */
+  full: boolean;
 };
 
-const name = process.env.STET_SITE;
+export const stateRoot = join(process.env.XDG_STATE_HOME ?? join(homedir(), '.local/state'), 'stet');
 
-if (!name) {
-  throw new Error('Run Stet through `pnpm stet`, which sets the site.');
+export function siteDirs(baseURL: string) {
+  const state = join(stateRoot, new URL(baseURL).host.replace(':', '_'));
+
+  return {
+    state,
+    manifest: join(state, 'site.json'),
+    saved: join(state, 'references'),
+    // Playwright keeps an unstable capture when overwriting a reference, so saving starts empty and is promoted only if it all succeeds.
+    candidate: join(state, 'references-candidate'),
+  };
 }
-
-export const site: Site = (await import(`../sites/${name}.ts`)).default;
-export const stateDir = join(homedir(), '.local/state/stet', name);
-export const savedDir = join(stateDir, 'references');
-// Playwright keeps an unstable capture when overwriting a reference, so saving starts empty and is promoted only if it all succeeds.
-export const candidateDir = join(stateDir, 'references-candidate');
-export const saving = Boolean(process.env.STET_SAVE);
-export const referencesDir = saving ? candidateDir : savedDir;

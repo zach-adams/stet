@@ -1,25 +1,31 @@
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, readdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { siteDirs, stateRoot, type Run } from './site.ts';
 import { sizes } from './sizes.ts';
 
+type Manifest = { baseURL: string; pages: string[]; replay?: string };
+
 const root = join(import.meta.dirname, '..');
-const sites = readdirSync(join(root, 'sites'))
-  .filter((file) => file.endsWith('.ts'))
-  .map((file) => file.slice(0, -3));
+const skillsDir = join(root, 'skills');
+const sizeNames = sizes.map((size) => size.name).join(', ');
 
-const help = `Stet compares what a site renders now with references saved from a known-good state.
+const help = `Stet checks whether a change altered what a local site renders, by comparing it with references saved from a known-good state. AI agents: run \`stet skills get core\` first.
 
-  pnpm stet compare <site>                Compare at desktop and small-phone. Never changes references.
-  pnpm stet compare <site> --all-sizes    Compare at all six sizes, before calling a change done.
-  pnpm stet save-references <site>        Save the current render as the references, at all six sizes.
-                                          Replacing existing references needs --user-approved.
+  stet save-references <url> [page ...]   Save how these pages render now, at all six sizes.
+  stet compare <url> [page ...]           Compare with the references at desktop and small-phone. Never changes references.
+  stet compare <url> --full               Compare at all six sizes and add real screenshots, before calling a change done.
+  stet list                               Show sites and pages with references.
+  stet skills get core                    Print how to use Stet, written for AI agents.
 
-  --page <pattern>   Only pages whose path matches the pattern.
-  --size <name>      Only one size: ${sizes.map((size) => size.name).join(', ')}.
+Pages are paths or full URLs on the same site. With none, save-references uses <url> itself, and compare uses every saved page unless <url> names one.
 
-Sites: ${sites.join(', ')}. Add one by copying sites/example.ts.
+  --size <name>       Only one size: ${sizeNames}.
+  --replay <pattern>  With save-references, also save and replay third parties whose URL matches, such as an embedded form's scripts.
+  --user-approved     With save-references, replace pages that already have references. Only after the user approves.
+  --allow-live        Run against a site that isn't local. Only when the user asks.
+
 Exit codes: 0 nothing changed, 1 something changed or couldn't be compared, 2 the command was refused.`;
 
 function refuse(message: string): never {
@@ -32,10 +38,11 @@ function options() {
     return parseArgs({
       allowPositionals: true,
       options: {
-        'all-sizes': { type: 'boolean' },
-        'user-approved': { type: 'boolean' },
-        page: { type: 'string' },
+        full: { type: 'boolean' },
         size: { type: 'string' },
+        replay: { type: 'string' },
+        'user-approved': { type: 'boolean' },
+        'allow-live': { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -44,11 +51,56 @@ function options() {
   }
 }
 
+function readManifest(file: string): Manifest | undefined {
+  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined;
+}
+
+function skills(args: string[]) {
+  const names = readdirSync(skillsDir);
+  const read = (name: string) => readFileSync(join(skillsDir, name, 'SKILL.md'), 'utf8');
+
+  if (args[0] === 'get' && args[1] && names.includes(args[1])) {
+    console.log(read(args[1]));
+    return;
+  }
+
+  if (args.length && args[0] !== 'list') {
+    refuse(`Use \`stet skills list\` or \`stet skills get <name>\`. Skills: ${names.join(', ')}.`);
+  }
+
+  for (const name of names) {
+    console.log(`${name}: ${read(name).match(/^description: (.+)$/m)?.[1]}`);
+  }
+}
+
+function list() {
+  const sites = existsSync(stateRoot) ? readdirSync(stateRoot) : [];
+  const manifests = sites.map((site) => readManifest(join(stateRoot, site, 'site.json'))).filter((manifest) => manifest !== undefined);
+
+  if (!manifests.length) {
+    console.log('No site has references yet.');
+  }
+
+  for (const { baseURL, pages } of manifests) {
+    console.log(`${baseURL}: ${pages.join(' ')}`);
+  }
+}
+
 const { positionals, values } = options();
-const [command, name] = positionals;
+const [command, address, ...rest] = positionals;
 
 if (!command || values.help) {
   console.log(help);
+  process.exit(0);
+}
+
+if (command === 'skills') {
+  skills(positionals.slice(1));
+  process.exit(0);
+}
+
+if (command === 'list') {
+  list();
   process.exit(0);
 }
 
@@ -56,64 +108,100 @@ if (command !== 'compare' && command !== 'save-references') {
   refuse(`Unknown command "${command}".\n\n${help}`);
 }
 
-if (!name || !sites.includes(name)) {
-  refuse(`Name a site after the command. Sites: ${sites.join(', ')}.`);
+if (!address || !URL.canParse(address)) {
+  refuse(`Give the site's full URL after the command, as in: stet ${command} https://example.test /about/`);
 }
 
 if (values.size && !sizes.some((size) => size.name === values.size)) {
-  refuse(`Unknown size "${values.size}". Sizes: ${sizes.map((size) => size.name).join(', ')}.`);
+  refuse(`Unknown size "${values.size}". Sizes: ${sizeNames}.`);
 }
 
-if (values.page) {
+if (values.replay) {
   try {
-    new RegExp(values.page);
+    new RegExp(values.replay);
   } catch {
-    refuse(`--page "${values.page}" isn't a valid pattern.`);
+    refuse(`--replay "${values.replay}" isn't a valid pattern.`);
+  }
+}
+
+const site = new URL(address);
+
+if (!values['allow-live'] && !/^(localhost|127\.0\.0\.1|\[::1\])$|\.(local|test|localhost|ddev\.site|lndo\.site)$/.test(site.hostname)) {
+  refuse(`${site.hostname} doesn't look like a local site. Use a live site only when the user asks for that run, then add --allow-live.`);
+}
+
+const pageOf = (page: string) => {
+  const url = new URL(page, site.origin);
+
+  if (url.origin !== site.origin) {
+    refuse(`${page} isn't on ${site.origin}.`);
   }
 
-  process.env.STET_PAGE = values.page;
+  return url.pathname + url.search;
+};
+
+const dirs = siteDirs(site.origin);
+const manifest = readManifest(dirs.manifest);
+const named = rest.length ? rest.map(pageOf) : site.pathname + site.search === '/' ? [] : [pageOf(address)];
+
+if (command === 'compare' && !manifest) {
+  refuse(`${site.origin} has no references yet. Once the user confirms the site is in a known-good state, run: stet save-references ${site.origin} <page> ...`);
 }
 
-process.env.STET_SITE = name;
-const { candidateDir, savedDir } = await import('./site.ts');
-const saved = existsSync(savedDir);
+const saving = command === 'save-references';
+const pages = saving ? (named.length ? named : ['/']) : named.length ? named : manifest!.pages;
 
-if (command === 'compare' && !saved) {
-  refuse(
-    `${name} has no references yet. Once the user confirms the site is in a known-good state, run: pnpm stet save-references ${name}`,
-  );
+if (saving && !values['user-approved']) {
+  const existing = pages.filter((page) => manifest?.pages.includes(page));
+
+  if (existing.length) {
+    refuse(`${existing.join(' ')} already ${existing.length === 1 ? 'has' : 'have'} references. Replacing them would hide any regression made since they were saved, so ask the user first. Once they approve, rerun with --user-approved.`);
+  }
 }
 
-if (command === 'save-references' && saved && !values['user-approved']) {
-  refuse(
-    `${name} already has references. Replacing them would hide any regression made since they were saved, so ask the user first. Once they approve, rerun with --user-approved.`,
-  );
+if (!saving) {
+  const unknown = pages.filter((page) => !manifest!.pages.includes(page));
+
+  if (unknown.length) {
+    refuse(`${unknown.join(' ')} ${unknown.length === 1 ? 'has' : 'have'} no references. Once the user confirms ${unknown.length === 1 ? 'it is' : 'they are'} in a known-good state, run: stet save-references ${site.origin} ${unknown.join(' ')}`);
+  }
 }
 
+// Patterns add up, because replacing one would block what other saved pages recorded under it.
+const replay = values.replay && manifest?.replay && manifest.replay !== values.replay ? `${manifest.replay}|${values.replay}` : (values.replay ?? manifest?.replay);
+const run: Run = { baseURL: site.origin, pages, replay, saving, full: Boolean(values.full) };
 const args = ['test'];
-
-if (command === 'save-references') {
-  process.env.STET_SAVE = '1';
-  rmSync(candidateDir, { recursive: true, force: true });
-}
 
 if (values.size) {
   args.push(`--project=${values.size}`);
-} else if (command === 'compare' && !values['all-sizes']) {
+} else if (!saving && !values.full) {
   args.push('--project=desktop', '--project=small-phone');
 }
 
-const run = spawnSync(join(root, 'node_modules/.bin/playwright'), args, { cwd: root, stdio: 'inherit' });
+if (saving) {
+  rmSync(dirs.candidate, { recursive: true, force: true });
+}
 
-if (command === 'save-references') {
-  if (run.status === 0) {
-    cpSync(candidateDir, savedDir, { recursive: true });
+const result = spawnSync(join(root, 'node_modules/.bin/playwright'), args, {
+  cwd: root,
+  stdio: 'inherit',
+  env: { ...process.env, STET_RUN: JSON.stringify(run) },
+});
+
+if (saving) {
+  if (result.status === 0) {
+    cpSync(dirs.candidate, dirs.saved, { recursive: true });
+    mkdirSync(dirs.state, { recursive: true });
+    writeFileSync(
+      dirs.manifest,
+      `${JSON.stringify({ baseURL: site.origin, pages: [...new Set([...(manifest?.pages ?? []), ...pages])], replay } satisfies Manifest, null, 2)}\n`,
+    );
     console.log('References saved.');
   } else {
     console.log('No references changed, because not everything could be saved.');
   }
 
-  rmSync(candidateDir, { recursive: true, force: true });
+  rmSync(dirs.candidate, { recursive: true, force: true });
 }
 
-process.exit(run.status ?? 1);
+process.exit(result.status ?? 1);

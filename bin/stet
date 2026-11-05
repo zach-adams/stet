@@ -1,0 +1,4 @@
+#!/bin/sh
+# Run through pnpm so the project's pinned Node is used whatever the shell's default is.
+root=$(dirname "$(dirname "$(realpath "$0")")")
+exec pnpm --silent --dir "$root" exec node "$root/src/stet.ts" "$@"
