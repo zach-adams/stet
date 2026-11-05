@@ -15,4 +15,6 @@ Stet is a local visual regression checker for WordPress sites. The `stet` comman
 
 ## Checks
 
-A change is done when `pnpm typecheck` and `pnpm test` pass and, for anything affecting capture or comparison, `stet compare <url> --full` gives the expected result on a real local site.
+Before changing TypeScript, read [docs/typescript-style.md](docs/typescript-style.md), including what it says about code that runs in the page. After edits, run `pnpm format`, `pnpm lint:fix`, then `pnpm format`.
+
+A change is done when `pnpm check` passes and, for anything affecting capture or comparison, `stet compare <url> --full` gives the expected result on a real local site.

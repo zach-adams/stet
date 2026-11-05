@@ -20,6 +20,8 @@
   "include": [
     "src",
     "tests",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "oxlint.config.ts",
+    "tools/oxlint/readability.ts"
   ]
 }

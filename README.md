@@ -31,6 +31,8 @@ References and results live in `~/.local/state/stet/<host>/`. A failed `--full` 
 ## Develop
 
 ```bash
-pnpm typecheck
-pnpm test
+pnpm format
+pnpm check   # formatting, lint, types and tests
 ```
+
+[docs/typescript-style.md](docs/typescript-style.md) has the code conventions.

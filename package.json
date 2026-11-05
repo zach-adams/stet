@@ -11,14 +11,23 @@
     "node": ">=24 <27"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks",
+    "lint": "oxlint --deny-warnings --report-unused-disable-directives",
+    "lint:fix": "pnpm lint --fix",
+    "format": "oxfmt src tests tools oxlint.config.ts playwright.config.ts",
+    "format:check": "oxfmt --check src tests tools oxlint.config.ts playwright.config.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/stet.test.ts"
+    "test": "node --test tests/stet.test.ts",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
   },
   "dependencies": {
     "@playwright/test": "1.64.1"
   },
   "devDependencies": {
+    "@oxlint/plugins": "1.86.0",
     "@types/node": "^24.19.2",
+    "oxfmt": "0.71.0",
+    "oxlint": "1.86.0",
     "typescript": "7.0.2"
   },
   "devEngines": {
