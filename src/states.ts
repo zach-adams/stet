@@ -41,6 +41,11 @@ const POOLS = {
   ],
 } satisfies Record<string, Array<[selector: string, classes: string[]]>>;
 
+/** Playwright's private way to make protocol calls without recording each one. */
+interface CallGrouping {
+  _wrapApiCall<T>(calls: () => Promise<T>, options: { internal: boolean }): Promise<T>;
+}
+
 // Keep one document for the whole walk, because Chromium files forced states under node ids
 // and a new document's ids can't clear them.
 async function forcer(page: Page, cdp: CDPSession) {
@@ -48,11 +53,17 @@ async function forcer(page: Page, cdp: CDPSession) {
   const set = async (selector: string, classes: string[]) => {
     const { nodeIds } = await cdp.send('DOM.querySelectorAll', { nodeId: root.nodeId, selector });
 
-    await Promise.all(
-      nodeIds.map((nodeId) =>
-        cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: classes }),
-      ),
-    );
+    const forceAll = () =>
+      Promise.all(
+        nodeIds.map((nodeId) =>
+          cdp.send('CSS.forcePseudoState', { nodeId, forcedPseudoClasses: classes }),
+        ),
+      );
+
+    // Playwright Test records every call as a step, and one page makes thousands of these.
+    // A Playwright release without this private method fails here instead of slowing down.
+    // SAFETY: CDPSession inherits _wrapApiCall from Playwright's ChannelOwner.
+    await (cdp as CDPSession & CallGrouping)._wrapApiCall(forceAll, { internal: true });
 
     return nodeIds.length;
   };
