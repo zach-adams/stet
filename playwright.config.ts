@@ -10,6 +10,9 @@ export default defineConfig({
   // Only `stet save-references` writes references. A missing reference fails a comparison.
   updateSnapshots: run.saving ? 'all' : 'none',
   fullyParallel: true,
+  // Four leaves the machine usable during a run, at some cost in finish time. Two local sites also
+  // answered 502 at six page loads at once and never at four.
+  workers: 4,
   timeout: 120_000,
   reporter: './src/report.ts',
   use: { baseURL: run.baseURL, ignoreHTTPSErrors: true },
