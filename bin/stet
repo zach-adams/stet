@@ -1,5 +1,13 @@
 #!/bin/sh
 # Run through pnpm so the project's pinned Node is used whatever the shell's default is. Running
 # from the Stet folder also lets Corepack pick the project's pinned pnpm.
-root=$(dirname "$(dirname "$(realpath "$0")")")
-cd "$root" && exec pnpm --silent exec node src/stet.ts "$@"
+set -eu
+# Follow the link onto the PATH by hand, because macOS before 13 has no realpath.
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in /*) self=$link ;; *) self=$(dirname "$self")/$link ;; esac
+done
+# -P resolves a linked folder on the PATH too.
+cd -P "$(dirname "$self")/.."
+exec pnpm --silent exec node src/stet.ts "$@"

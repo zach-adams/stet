@@ -28,6 +28,26 @@ export interface Changed {
   files: Observed[];
 }
 
+/**
+ * Hosts that only this machine or its network can reach: loopback and private addresses, and
+ * names reserved for local use or that local development tools point there, with or without a
+ * trailing dot. A regular expression source without anchors, so a URL pattern can include it.
+ */
+export const LOCAL_HOST = `(?:${[
+  'localhost',
+  String.raw`[\w-]+(?:\.[\w-]+)*\.(?:localhost|test|local|internal|lan|home\.arpa|ddev\.site|lndo\.site)`,
+  String.raw`(?:127|10)(?:\.\d{1,3}){3}`,
+  String.raw`0\.0\.0\.0`,
+  String.raw`192\.168(?:\.\d{1,3}){2}`,
+  String.raw`172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2}`,
+  String.raw`169\.254(?:\.\d{1,3}){2}`,
+  String.raw`\[(?:::1|f[cd][\da-f]*:[\da-f:]*|fe[89ab][\da-f]*:[\da-f:]*)\]`,
+].join('|')})\\.?`;
+
+export function isLocalHost(hostname: string) {
+  return new RegExp(`^${LOCAL_HOST}$`).test(hostname);
+}
+
 export const stateRoot = join(
   process.env.XDG_STATE_HOME ?? join(homedir(), '.local/state'),
   'stet',

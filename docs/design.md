@@ -56,7 +56,7 @@ Full-page screenshots are out, because they disturb the page. Measured on a real
 
 Each capture does the following, in order:
 
-1. Save or replay third-party fonts, stylesheets and images, and block third-party scripts, data requests and frames unless their URL matches `--replay`. A third party that varies between runs can't be compared. Blocking everything would remove fonts and CDN images from many sites, and scripts are what vary. Blocked form scripts remove content the site styles, which the `--replay` hint in each save report points at.
+1. Save or replay third-party fonts, stylesheets and images, and block third-party scripts, data requests and frames unless their URL matches `--replay`. A third party is any origin other than the page's that isn't a local host. A local site's CSS and JavaScript can come from another local server, such as a Vite dev server on another port, and they change with the site, so freezing them would pass every edit to them. A third party that varies between runs can't be compared. Blocking everything would remove fonts and CDN images from many sites, and scripts are what vary. Blocked form scripts remove content the site styles, which the `--replay` hint in each save report points at.
 2. Load the page, starting each worker's first load half a second apart, because two local sites answered 502 at six full page loads at once and never at four. Scroll instantly to start lazy loading, run timers, and fail if a visible image or font didn't load or the page redirected. An overloaded server gets two more tries.
 3. Reset the screen with `scrollIntoView` before each scroll. When a page grows on phone emulation, scroll anchoring pans the visual viewport, and `scrollTo` can't undo that even though `scrollY` reads 0.
 4. After any change, run timers, wait for requests, finish animations, and wait for page height and scroll offsets to hold.
@@ -68,7 +68,9 @@ Runs against one site wait their turn, because three at once made a local site a
 
 ## No per-site files
 
-A site is identified by its URL. `save-references` records the pages and replay pattern in `site.json` beside the references, so `compare` needs only the URL. There's nothing to configure in the repo, and the page list stays with the references it describes. Non-local hosts are refused without `--allow-live`, because a free-form URL makes production one typo away.
+A site is identified by its URL. `save-references` records the pages and replay pattern in `site.json` beside the references, so `compare` needs only the URL. There's nothing to configure in the repo, and the page list stays with the references it describes. References belong to the host and port, so projects served at the same address share them, and the refusal to replace references says so.
+
+Any host works, because pressing controls can't change a site and a staging or live check is a real use. Agents run against a live site only when the user asks, as the agent guide says.
 
 ## References
 
@@ -120,6 +122,9 @@ A layout tree verdict, generic DOM matching, per-site config files, accepting so
 - A page wider than a phone screen can't be fully screenshotted, because script scrolling can't pan across it. The report lists the width and height that only the paint record covers.
 - A cross-origin iframe doesn't appear in the paint record, and blocked frames are replaced with blank documents.
 - Blocked third parties aren't compared, including consent banners and embedded players. Replayed responses stay frozen until the references are replaced, so a vendor's own change won't show.
+- On a staging or live site, the site's own assets on a CDN at another host count as third party, so a change to them won't show. Only local hosts count as the site's own besides its origin. Which hosts are local comes from their names and addresses, so a local server under a public-looking name, set in `/etc/hosts`, counts as third party.
+- The pages load before the non-GET block is installed, so a page's own scripts can still send requests while it loads, such as analytics. That matters only on a live site.
+- References are only reliable on the machine that saved them, because fonts and rendering can differ between machines and operating systems.
 - Playwright routes only the first request of a redirect chain, so a first-party request that redirects to a third party can't be blocked or saved. The report lists those hosts. Pixels still decide, so one that varies fails the comparison.
 - A page that keeps changing in layout fails as unstable, or as painted differently. Stet reports that and doesn't work around it, because it can point to a real layout problem.
 - Requests can finish in a different order between loads, so a script that shows whichever arrived first still varies.

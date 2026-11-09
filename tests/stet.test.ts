@@ -6,6 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
+import { isLocalHost } from '../src/site.ts';
 
 const clean = {
   status: 200,
@@ -16,6 +17,7 @@ const clean = {
   headingMargin: 20,
   image: '#336699',
   thirdPartyImage: '#996633',
+  devServerImage: '#669933',
   fill: '#663399',
   href: '/about/',
   slide: 'Second slide',
@@ -42,6 +44,9 @@ interface FixtureState extends CleanState {
   recoversAfter?: number;
 }
 
+// A public name that Chromium resolves to this test's server, standing in for a third party,
+// because any local host counts as the site's own.
+const VENDOR = 'vendor.example';
 let state: FixtureState = { ...clean };
 let port = 0;
 let writes = 0;
@@ -58,13 +63,14 @@ function page() {
 <body style="margin:0;font:18px sans-serif">
 ${state.wrapped ? `<div>${heading}</div>` : heading}
 <img src="/image.svg" width="40" height="40" alt="photo">
-<img src="http://127.0.0.1:${port}/third.svg" width="40" height="40" alt="third party">
+<img src="http://${VENDOR}:${port}/third.svg" width="40" height="40" alt="third party">
+<img src="http://127.0.0.1:${port}/dev-server.svg" width="40" height="40" alt="from another local server">
 <img src="/moved.svg" width="40" height="40" alt="redirected to a third party">
 <p><a ${state.href ? `href="${state.href}"` : ''}>A link</a></p>
 <svg width="40" height="40"><circle cx="20" cy="20" r="20" fill="${state.fill}"/></svg>
 <div style="overflow:hidden;width:300px"><div style="display:flex;width:600px;will-change:transform;opacity:${state.opacity}">
 <div style="width:300px">First slide</div><div style="width:300px">${state.slide}</div></div></div>
-<script src="http://127.0.0.1:${port}/third.js"></script>
+<script src="http://${VENDOR}:${port}/third.js"></script>
 ${state.moving ? `<script>let n = 0; setInterval(() => { document.querySelector('h1').style.marginTop = ++n + 'px'; }, 16);</script>` : ''}
 <style>.cta { transition: color ${state.ctaTransition} } .cta:hover { color: ${state.hoverColor}; cursor: ${state.hoverCursor} } button { pointer-events: ${state.buttonClicks} } .cta:focus-visible { outline: 3px solid ${state.focusRing} } html[data-input="mouse"] :focus { outline: none } .panel { display: none } .menu.open .panel { display: block }</style>
 <p><a class="cta" href="/cta/">${state.wrapped ? '<span style="display: contents"><span>Call to action</span></span>' : 'Call to action'}</a></p>
@@ -145,8 +151,11 @@ const server = createServer((request, response) => {
       'content-type': 'image/svg+xml',
     });
     response.end(svg(request.url === '/image.svg' ? state.image : state.thirdPartyImage));
+  } else if (request.url === '/dev-server.svg') {
+    response.writeHead(200, { 'content-type': 'image/svg+xml' });
+    response.end(svg(state.devServerImage));
   } else if (request.url === '/moved.svg') {
-    response.writeHead(302, { location: `http://127.0.0.1:${port}/moved-target.svg` });
+    response.writeHead(302, { location: `http://${VENDOR}:${port}/moved-target.svg` });
     response.end();
   } else if (request.url === '/moved-target.svg') {
     response.writeHead(200, { 'content-type': 'image/svg+xml' });
@@ -180,7 +189,13 @@ function stet(...args: string[]) {
     execFile(
       bin,
       args,
-      { env: { ...process.env, XDG_STATE_HOME: stateHome } },
+      {
+        env: {
+          ...process.env,
+          XDG_STATE_HOME: stateHome,
+          STET_TEST_HOSTS: `MAP ${VENDOR} 127.0.0.1`,
+        },
+      },
       (error, stdout, stderr) => {
         resolve({ status: error ? Number(error.code) : 0, output: stdout + stderr });
       },
@@ -204,16 +219,54 @@ after(() => {
 });
 
 test('refuses what it can be refused for', async () => {
-  const live = await stet('compare', 'https://www.example.com');
-
-  assert.equal(live.status, 2);
-  assert.match(live.output, /doesn't look like a local site/);
-
   const unsaved = await stet('compare', site());
 
   assert.equal(unsaved.status, 2);
   assert.match(unsaved.output, /no references yet/);
+  // A site that isn't local is refused only for the same reason.
+  assert.match((await stet('compare', 'https://www.example.com')).output, /no references yet/);
   assert.equal((await stet('compare', 'not-a-url')).status, 2);
+});
+
+test('knows which hosts are local', () => {
+  const local = [
+    'localhost',
+    'app.localhost',
+    'site.test',
+    'localhost.',
+    'site.test.',
+    'shop.site.local',
+    'host.docker.internal',
+    'router.lan',
+    'nas.home.arpa',
+    'site.ddev.site',
+    'site.lndo.site',
+    '127.0.0.1',
+    '0.0.0.0',
+    '10.0.0.5',
+    '172.16.4.2',
+    '172.31.255.255',
+    '192.168.1.20',
+    '169.254.0.1',
+    '[::1]',
+    '[fd12:3456::1]',
+    '[fe80::1]',
+  ];
+  const remote = [
+    'example.com',
+    'site.test.example.com',
+    'localhost.example.com',
+    'test',
+    '172.32.0.1',
+    '11.0.0.1',
+    '[2001:db8::1]',
+  ];
+
+  assert.deepEqual(
+    local.filter((host) => !isLocalHost(host)),
+    [],
+  );
+  assert.deepEqual(remote.filter(isLocalHost), []);
 });
 
 test('prints its guide for agents', async () => {
@@ -228,7 +281,10 @@ test('saves references, remembers the pages and refuses to replace them unasked'
 
   assert.equal(saved.status, 0, saved.output);
   assert.match((await stet('list')).output, new RegExp(`${site()}: /\\n`));
-  assert.equal((await stet('save-references', site(), '/', '--size', 'desktop')).status, 2);
+  const again = await stet('save-references', site(), '/', '--size', 'desktop');
+
+  assert.equal(again.status, 2);
+  assert.match(again.output, /another project served there shares them/);
 });
 
 test('passes when nothing changed and reports what it blocked', async () => {
@@ -238,11 +294,13 @@ test('passes when nothing changed and reports what it blocked', async () => {
   assert.match(output, /1 unchanged/);
   assert.match(output, /Blocked third parties/);
   // The same host was reached both ways, and each request is reported for what happened to it.
-  assert.match(output, /Replayed saved responses from: 127\.0\.0\.1/);
+  assert.match(output, /Replayed saved responses from: vendor\.example/);
   assert.match(
     output,
-    /Reached through a first-party redirect, so neither blocked nor saved: 127\.0\.0\.1/,
+    /Reached through a first-party redirect, so neither blocked nor saved: vendor\.example/,
   );
+  // Another local server is the site's own, so it is neither blocked nor replayed.
+  assert.doesNotMatch(output, /127\.0\.0\.1/);
 });
 
 test('a server that recovers from being overloaded still gets compared', async () => {
@@ -282,6 +340,7 @@ for (const [name, change] of Object.entries({
 for (const [name, change, expected] of [
   ['a one-step color change', { headingColor: 'rgb(10, 21, 30)' }, /painted differently/],
   ['an image swapped at the same size', { image: '#336698' }, /painted differently/],
+  ['an image from another local server', { devServerImage: '#669932' }, /painted differently/],
   ['a changed SVG fill', { fill: '#663398' }, /painted differently/],
   ['a 1px margin', { headingMargin: 21 }, /painted differently/],
   ['a removed link', { href: '' }, /Text, links or controls changed/],

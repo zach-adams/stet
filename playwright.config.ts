@@ -15,7 +15,15 @@ export default defineConfig({
   workers: 4,
   timeout: 120_000,
   reporter: './src/report.ts',
-  use: { baseURL: run.baseURL, ignoreHTTPSErrors: true },
+  use: {
+    baseURL: run.baseURL,
+    ignoreHTTPSErrors: true,
+    // Every local host counts as the site's own, so tests map a public name to their local server
+    // to stand in for a third party.
+    launchOptions: process.env.STET_TEST_HOSTS
+      ? { args: [`--host-resolver-rules=${process.env.STET_TEST_HOSTS}`] }
+      : {},
+  },
   expect: {
     timeout: 30_000,
     // A logo on a few phone screens varies by one color level between loads, and the paint record

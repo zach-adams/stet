@@ -1,8 +1,8 @@
 # Stet
 
-Stet checks whether a code change altered how a website renders. You save references from a known-good copy of a local site, make your change and run `stet compare`. Stet fails if a saved page renders differently, at up to seven screen sizes and in every hover, focus, open or pressed state it can reach, and its report says what changed and where.
+Stet checks whether a code change altered how a website renders. You save references from a known-good version of your site, make your change and run `stet compare`. Stet fails if a saved page renders differently, at up to seven screen sizes and in every hover, focus, open or pressed state it can reach, and its report says what changed and where.
 
-Stet is built for refactors, where the code changes and the site should look exactly the same, such as moving to a new CSS framework, upgrading a component library or rewriting templates. It works with any site you can serve locally, from static HTML to a CMS or a JavaScript framework. It's quick enough to run after each edit, and it prints its own guide for AI coding agents so they can check their work as they go. It runs on [Playwright](https://playwright.dev) and Chromium.
+Stet is built for refactors, where the code changes and the site should look exactly the same, such as moving to a new CSS framework, upgrading a component library or rewriting templates. It works with any site Chromium can load, from static HTML to a CMS or a JavaScript framework, whether it runs on your machine or on a staging server. It's quick enough to run after each edit, and it prints its own guide for AI coding agents so they can check their work as they go. It runs on [Playwright](https://playwright.dev) and Chromium.
 
 The name is the proofreading mark for "let it stand".
 
@@ -22,9 +22,9 @@ The first three checks repeat with every element hovered at once, every focusabl
 ## Requirements
 
 - [pnpm](https://pnpm.io). The repository pins the pnpm and Node versions it uses, and pnpm downloads them.
-- A site served locally, at `localhost` or `127.0.0.1` on any port, or at a host ending in `.local`, `.test`, `.localhost`, `.ddev.site` or `.lndo.site`. Stet refuses any other host unless you add `--allow-live`.
+- A site to check, at any URL. Most runs use a copy on your own machine, such as a dev server or a production build, because that's where code changes happen first.
 
-Stet is developed and tested on macOS.
+Stet is developed and tested on macOS. It hasn't been tested on Linux. On Windows, run it in WSL, because `stet` is a shell script.
 
 ## Install
 
@@ -87,6 +87,8 @@ The other commands also exit with 2 when Stet refuses them.
 
 Stet works with dev servers and with production builds, but save references from the same kind of server you compare against. A dev server adds its own overlays, such as Next.js's dev tools button, so references saved from a production build fail against a dev server. A production build or preview server, such as `next start`, `vite preview` or `astro preview`, gives the steadiest results, because a dev server compiles pages on demand.
 
+Stet treats every local server as part of your site. A page at `https://site.test` that loads its CSS and JavaScript from a Vite dev server at `localhost:5173` is compared with those files as they are now. Local servers are `localhost` and `127.0.0.1` on any port, private network addresses such as `192.168.1.20`, and hosts ending in `.localhost`, `.test`, `.local`, `.internal`, `.lan`, `.home.arpa`, `.ddev.site` or `.lndo.site`.
+
 ## Reading a report
 
 A failing comparison lists each page and size that changed and what changed there. This one came from `--full`:
@@ -118,7 +120,7 @@ Fix a changed page size first, because a page that grows moves everything below 
 | `stet list` | Shows the sites and pages that have references. |
 | `stet skills get core` | Prints the guide for AI agents. |
 
-`--size <name>` runs a single size, `--replay <pattern>` saves and replays a third party a page needs, such as an embedded form, and `--allow-live` runs against a site that isn't local.
+`--size <name>` runs a single size, and `--replay <pattern>` saves and replays a third party a page needs, such as an embedded form.
 
 ## Screen sizes
 
@@ -159,21 +161,24 @@ A pass means nothing changed in what Stet captured on the saved pages and sizes.
 - controls the report lists as not driven
 - third-party scripts, data requests and frames, such as consent banners and video embeds
 
-Stet saves third-party fonts, stylesheets and images with the references and replays them. It blocks other third-party requests and lists them in each report, because they change between runs. `--replay` saves and replays one a page needs.
+A third party is any host other than the site's own that isn't a local server. Stet saves third-party fonts, stylesheets and images with the references and replays them. It blocks other third-party requests and lists them in each report, because they change between runs. `--replay` saves and replays one a page needs. On a staging or live site, assets served from a CDN on another host count as third party too, so a change to them won't show.
 
 Stet only runs Chromium today. [Known limits](docs/design.md#known-limits) lists the rest.
 
 ## Where files go
 
-References and results live in `~/.local/state/stet/<host>/`, or in `$XDG_STATE_HOME/stet/<host>/` when that's set. A failed `--full` comparison leaves its expected, actual and diff images in that folder's `results/`.
+References and results live in `~/.local/state/stet/<host>/`, or in `$XDG_STATE_HOME/stet/<host>/` when that's set, such as `localhost_3000` for `localhost:3000`. A failed `--full` comparison leaves its expected, actual and diff images in that folder's `results/`.
 
-Stet doesn't write to your site or its repository. While it presses controls, it aborts every request other than a GET and cancels navigation.
+References belong to an address, so two projects served at the same one, such as `localhost:3000`, share them. Serve each project on its own port or hostname, and check `stet list` before saving. Save and compare on the same machine too, because fonts and rendering can differ between machines and operating systems, so references from another one may fail where nothing changed.
+
+Stet doesn't write to your site or its repository. While it presses controls, it aborts every request other than a GET and cancels navigation. A run against a live site still loads each saved page several times, like a visitor would, and the page's own scripts run while it loads.
 
 ## Contributing
 
 ```bash
+git config core.hooksPath .githooks   # once, so each commit checks formatting, lint and types
 pnpm format
-pnpm check   # formatting, lint, types and tests
+pnpm check                            # formatting, lint, types and tests
 ```
 
 The tests drive Chromium against fixture pages and take a few minutes. [docs/typescript-style.md](docs/typescript-style.md) has the code conventions. [AGENTS.md](AGENTS.md) has the rules for changing Stet, and they apply to people too.

@@ -1,6 +1,6 @@
 # Stet
 
-Stet is a command-line visual regression checker for locally served websites. These instructions cover changing Stet. To run it against a site, read [skills/core/SKILL.md](skills/core/SKILL.md), which `stet skills get core` prints.
+Stet is a command-line visual regression checker for websites. These instructions cover changing Stet. To run it against a site, read [skills/core/SKILL.md](skills/core/SKILL.md), which `stet skills get core` prints.
 
 ## Where things are
 
@@ -11,13 +11,13 @@ Stet is a command-line visual regression checker for locally served websites. Th
 - `src/states.ts` finds the page's controls and walks its hover, focus, open and pressed states.
 - `src/report.ts` is the Playwright reporter that prints the text report.
 - `src/sizes.ts` lists the seven screen sizes.
-- `src/site.ts` and `src/run.ts` hold the shared types, where each site's files live and the current run's settings.
+- `src/site.ts` and `src/run.ts` hold the shared types, which hosts count as local, where each site's files live and the current run's settings.
 - `tests/stet.test.ts` runs the `stet` command against fixture pages it serves locally.
 - [docs/design.md](docs/design.md) records what Stet compares, stores and reports, and why. Read it before changing any of those, and update it when a decision changes.
 
 ## Rules
 
-- Run it against local sites. Use a production or live URL only when the user asks for that run, and keep the refusal that requires `--allow-live`.
+- Test changes against local sites. Run Stet against a production or other live site only when the user asks for that run.
 - Fix or report a failing `compare`. Pass `--user-approved` to `save-references` or `accept-changes` only after the user approves replacing those references, because an agent that can replace references can approve its own regressions.
 - Let pixels decide pass or fail. Geometry, styles, paint commands and element labels may explain a failure but must never turn it into a pass. The aria snapshot and the counts of cursors, clicks, transitions and animations are the exceptions, because they check what pixels can't see.
 - Capture one screen at a time and never with `fullPage`, which disturbs the page. [docs/design.md](docs/design.md) has the measurements.
@@ -28,6 +28,6 @@ Stet is a command-line visual regression checker for locally served websites. Th
 
 ## Checks
 
-Before changing TypeScript, read [docs/typescript-style.md](docs/typescript-style.md), including what it says about code that runs in the page. After edits, run `pnpm format`, `pnpm lint:fix`, then `pnpm format`.
+In a new clone, run `git config core.hooksPath .githooks` once, so commits check formatting, lint and types. Before changing TypeScript, read [docs/typescript-style.md](docs/typescript-style.md), including what it says about code that runs in the page. After edits, run `pnpm format`, `pnpm lint:fix`, then `pnpm format`.
 
 A change is done when `pnpm check` passes and, for anything affecting capture or comparison, `stet compare <url> --full` gives the expected result on a real local site.

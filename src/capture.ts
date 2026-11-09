@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { expect, type BrowserContext, type Page, type Request } from '@playwright/test';
 import { run } from './run.ts';
+import { isLocalHost, LOCAL_HOST } from './site.ts';
 
 // These can't change a page on their own, and a site that loses them fails the load check.
 const PASSIVE = new Set(['font', 'stylesheet', 'image', 'media']);
@@ -19,7 +20,10 @@ export async function freezeThirdParties(context: BrowserContext, har: string) {
   const keep = (request: Request) =>
     hasResponses && (PASSIVE.has(request.resourceType()) || Boolean(replay?.test(request.url())));
 
-  const isThirdParty = (url: URL) => url.protocol.startsWith('http') && url.origin !== site.origin;
+  // A site's assets can come from another local server, such as a Vite dev server, and change
+  // with the site, so they are compared live like the site's own.
+  const isThirdParty = (url: URL) =>
+    url.protocol.startsWith('http') && url.origin !== site.origin && !isLocalHost(url.hostname);
   const url = (request: Request) => new URL(request.url());
 
   // Playwright routes only the first request of a redirect chain, so one that started on the site
@@ -60,8 +64,9 @@ export async function freezeThirdParties(context: BrowserContext, har: string) {
   });
 
   if (hasResponses) {
+    const siteOrigin = site.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     const thirdParty = new RegExp(
-      `^(?!${site.origin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:/|$))https?://`,
+      `^(?!${siteOrigin}(?:/|$))(?!https?://(?:${LOCAL_HOST})(?::\\d+)?(?:/|$))https?://`,
     );
 
     await context.routeFromHAR(
@@ -76,7 +81,7 @@ export async function freezeThirdParties(context: BrowserContext, har: string) {
   await context.route('**/*', (route) => {
     const request = route.request();
 
-    if (new URL(request.url()).origin === site.origin || keep(request)) {
+    if (!isThirdParty(url(request)) || keep(request)) {
       return route.fallback();
     }
 

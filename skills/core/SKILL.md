@@ -1,15 +1,15 @@
 ---
 name: core
-description: How to check whether a change altered what a local site renders. Read this before running any stet command.
+description: How to check whether a change altered what a site renders. Read this before running any stet command.
 ---
 
 # Stet
 
-Stet compares what a local site renders with references saved from a known-good state, so you can show a refactor kept the site looking and linking the same. Refactors that change the DOM but not the render pass.
+Stet compares what a site renders with references saved from a known-good state, so you can show a refactor kept the site looking and linking the same. Refactors that change the DOM but not the render pass.
 
 ## The loop
 
-1. Run `stet list` before editing. If the site or the pages your change could touch aren't listed, ask the user whether the site is in a known-good state. Once they confirm, save references:
+1. Run `stet list` before editing. If the site or the pages your change could touch aren't listed, ask the user whether the site is in a known-good state. References belong to an address such as `localhost:3000`, so pages listed there may belong to another project served at it. Once the user confirms, save references:
 
    ```bash
    stet save-references https://site.test / /about/ /contact/
@@ -82,14 +82,14 @@ changed: /about/ at desktop
 ## Rules
 
 - Never pass `--user-approved` on your own. Both `accept-changes` and `save-references` use it to replace references, and an agent that replaces references can approve its own regressions. Ask the user, and use it only for the pages they approved.
-- Use `--allow-live` only when the user asks for a run against a live site.
+- Run against a production or other live site only when the user asks for that run, because each run loads every saved page several times.
 - Compare against the same kind of server the references came from. A dev server adds its own overlays, such as Next.js's dev tools button, so references saved from a production build fail against it. A production build or preview server gives the steadiest results.
 - Report what a pass covers. `compare` doesn't drive menus, tabs or dialogs, so say so until `--full` has passed. Neither says anything about pages you didn't save, about form submissions, about the browser's own video controls, which are hidden, or about what a report lists as blocked or not driven. `Not driven` names controls Stet found but didn't press.
 - Stet presses every control it finds, but it can't change the site. It aborts anything other than a GET request and cancels navigation.
 
 ## Third parties
 
-Third-party fonts, stylesheets and images are saved with the references and replayed. Third-party scripts, data requests and frames are blocked, and each report lists them, so a consent banner or video embed isn't compared.
+Every local server, such as a Vite dev server on `localhost:5173` that serves a local site's CSS and JavaScript, counts as part of the site and is compared live. Any other host is a third party. Third-party fonts, stylesheets and images are saved with the references and replayed. Third-party scripts, data requests and frames are blocked, and each report lists them, so a consent banner or video embed isn't compared. On a staging or live site, assets from a CDN on another host are third party too, so say that a change to them isn't covered.
 
 If a blocked script draws something the page needs, such as an embedded form, ask the user to approve replacing the references and save again with a URL pattern that matches it. The pattern is remembered:
 

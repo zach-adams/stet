@@ -66,5 +66,6 @@ pnpm check
 `pnpm check` runs formatting, linting, type checking and tests. Fix the code
 rather than adding suppressions or changing rules to pass a check.
 
-The pre-commit hook runs everything except the tests, which take about three
-minutes and drive browsers. Run `pnpm check` before calling a change done.
+Once `git config core.hooksPath .githooks` is set, the pre-commit hook runs
+everything except the tests, which take about four minutes and drive browsers.
+Run `pnpm check` before calling a change done.

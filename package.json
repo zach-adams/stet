@@ -2,7 +2,7 @@
   "name": "stet",
   "private": true,
   "type": "module",
-  "description": "Local visual regression checks for websites.",
+  "description": "Visual regression checks for websites.",
   "license": "MIT",
   "bin": {
     "stet": "bin/stet"
@@ -12,7 +12,6 @@
     "node": ">=24 <27"
   },
   "scripts": {
-    "prepare": "git config core.hooksPath .githooks",
     "lint": "oxlint --deny-warnings --report-unused-disable-directives",
     "lint:fix": "pnpm lint --fix",
     "format": "oxfmt src tests tools oxlint.config.ts playwright.config.ts",

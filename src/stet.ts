@@ -23,7 +23,7 @@ const root = join(import.meta.dirname, '..');
 const skillsDir = join(root, 'skills');
 const sizeNames = sizes.map((size) => size.name).join(', ');
 
-const help = `Stet checks whether a change altered what a local site renders, by comparing it with references saved from a known-good state. AI agents: run \`stet skills get core\` first.
+const help = `Stet checks whether a change altered what a site renders, by comparing it with references saved from a known-good state. AI agents: run \`stet skills get core\` first.
 
   stet save-references <url> [page ...]   Save how these pages render now, at all seven sizes.
   stet compare <url> [page ...]           Compare with the references at desktop and small-phone, at rest and with hover, focus and closed details open. Never changes references.
@@ -37,8 +37,6 @@ Pages are paths or full URLs on the same site. With none, save-references uses <
   --size <name>       Only one size: ${sizeNames}.
   --replay <pattern>  With save-references, also save and replay third parties whose URL matches, such as an embedded form's scripts.
   --user-approved     Required by accept-changes, and by save-references to replace pages that already have references. Only after the user approves.
-  --allow-live        Run against a site that isn't local. Only when the user asks.
-
 Exit codes: 0 nothing changed, 1 something changed or couldn't be compared, 2 the command was refused.`;
 
 function refuse(message: string): never {
@@ -55,7 +53,6 @@ function options() {
         size: { type: 'string' },
         replay: { type: 'string' },
         'user-approved': { type: 'boolean' },
-        'allow-live': { type: 'boolean' },
         help: { type: 'boolean', short: 'h' },
       },
     });
@@ -184,14 +181,6 @@ if (values.replay) {
 }
 
 const site = new URL(address);
-const LOCAL_HOST =
-  /^(localhost|127\.0\.0\.1|\[::1\])$|\.(local|test|localhost|ddev\.site|lndo\.site)$/;
-
-if (!values['allow-live'] && !LOCAL_HOST.test(site.hostname)) {
-  refuse(
-    `${site.hostname} doesn't look like a local site. Use a live site only when the user asks for that run, then add --allow-live.`,
-  );
-}
 
 function pageOf(page: string) {
   const url = new URL(page, site.origin);
@@ -234,7 +223,7 @@ if (saving && !values['user-approved']) {
 
   if (existing.length) {
     refuse(
-      `${existing.join(' ')} already ${existing.length === 1 ? 'has' : 'have'} references. Replacing them would hide any regression made since they were saved, so ask the user first. Once they approve, rerun with --user-approved.`,
+      `${existing.join(' ')} already ${existing.length === 1 ? 'has' : 'have'} references at ${site.host}. References belong to an address, so another project served there shares them, and \`stet list\` shows what's saved. Replacing them would hide any regression made since they were saved, so ask the user first. Once they approve, rerun with --user-approved.`,
     );
   }
 }
