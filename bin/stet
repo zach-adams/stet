@@ -1,4 +1,5 @@
 #!/bin/sh
-# Run through pnpm so the project's pinned Node is used whatever the shell's default is.
+# Run through pnpm so the project's pinned Node is used whatever the shell's default is. Running
+# from the Stet folder also lets Corepack pick the project's pinned pnpm.
 root=$(dirname "$(dirname "$(realpath "$0")")")
-exec pnpm --silent --dir "$root" exec node "$root/src/stet.ts" "$@"
+cd "$root" && exec pnpm --silent exec node src/stet.ts "$@"
