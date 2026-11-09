@@ -28,9 +28,9 @@ Stet is developed and tested on macOS.
 
 ## Install
 
-Clone this repository, then run these from its folder:
-
 ```bash
+git clone https://github.com/zach-adams/stet.git
+cd stet
 pnpm install
 pnpm exec playwright install chromium
 mkdir -p ~/.local/bin
