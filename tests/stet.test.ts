@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -461,21 +461,28 @@ test('names the controls it ran out of reads for', async () => {
 });
 
 test('accepts only what the last compare reported, and only once the user approves', async () => {
-  state = { ...clean, headingColor: 'rgb(200, 0, 0)' };
+  // The margin grows the page by more than a screen, so its new last screen has no reference.
+  const accepted = { headingColor: 'rgb(200, 0, 0)', headingMargin: 1200 };
+
+  state = { ...clean, ...accepted };
 
   const changed = await compare('/', '--full');
 
   assert.equal(changed.status, 1, changed.output);
+  assert.match(changed.output, /No reference for: .*\.png/);
   assert.match(changed.output, /stet accept-changes \S+ \/ --user-approved/);
   assert.equal((await stet('accept-changes', site(), '/')).status, 2);
 
-  const accepted = await stet('accept-changes', site(), '/', '--user-approved');
+  const accepting = await stet('accept-changes', site(), '/', '--user-approved');
 
-  assert.equal(accepted.status, 0, accepted.output);
-  assert.equal((await compare('/', '--full')).status, 0);
+  assert.equal(accepting.status, 0, accepting.output);
+
+  const after = await compare('/', '--full');
+
+  assert.equal(after.status, 0, after.output);
 
   // A later change is explained against what was accepted, so the accepted one isn't listed.
-  state = { ...clean, headingColor: 'rgb(200, 0, 0)', image: '#336698' };
+  state = { ...clean, ...accepted, image: '#336698' };
 
   const next = await compare('/');
 
@@ -486,4 +493,21 @@ test('accepts only what the last compare reported, and only once the user approv
   await compare('/', '--full');
   assert.equal((await stet('accept-changes', site(), '/', '--user-approved')).status, 0);
   assert.equal((await compare('/', '--full')).status, 0);
+});
+
+test('accepts a screen that has no reference yet, as a page that grew would have', async () => {
+  const references = join(stateHome, 'stet', `localhost_${port}`, 'references', 'desktop');
+  const screen = readdirSync(references).find((file) => /^home-\w{8}-1\.png$/.test(file)) ?? '';
+
+  rmSync(join(references, screen));
+
+  const missing = await compare('/', '--full');
+
+  assert.equal(missing.status, 1, missing.output);
+  assert.match(missing.output, /changed: \/ at desktop\n\s+No reference for: home-\w{8}-1\.png\./);
+  assert.equal((await stet('accept-changes', site(), '/', '--user-approved')).status, 0);
+
+  const after = await compare('/', '--full');
+
+  assert.equal(after.status, 0, after.output);
 });

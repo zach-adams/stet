@@ -70,7 +70,7 @@ changed: /about/ at desktop
 - `Text, links or controls changed` is a diff of the accessibility tree. A removed `href` or renamed control shows up here even when no pixel changes.
 - `Screens that differ` and `Images` appear with `--full`. Open the `-diff.png` files to see the change. If that's the only line and the diff shows just the edges of text in one box, it may be text landing a fraction of a pixel differently rather than a change. Report it instead of calling it a regression or a pass.
 - `never held still` means the page keeps changing, which Stet reports and won't pass.
-- `could not compare` covers error statuses, redirects, and images or fonts that didn't load. It says nothing about your change, so fix the cause and run it again.
+- `could not compare` covers error statuses, redirects, images or fonts that didn't load, screens that never held still, and anything else that stopped a comparison partway. Changes listed with it were found before it stopped, and it may have missed others, so fix the cause and run it again before reporting or accepting them.
 - `gateway error` means the local server stayed overloaded through several tries. Runs against one site wait their turn, so find what else is hitting it and try again.
 
 ## Rules

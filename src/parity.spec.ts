@@ -55,20 +55,18 @@ async function compareSizeAndAria(page: Page, name: string, size: PageSize) {
   expect.soft(`${await page.locator('body').ariaSnapshot()}\n`).toMatchSnapshot(`${name}-aria.txt`);
 }
 
-// toHaveScreenshot decodes both images and compares every pixel even when they're the same file.
-async function isReferenceCopy(page: Page, file: string) {
-  const reference = test.info().snapshotPath(file, { kind: 'screenshot' });
-
-  if (run.saving || !existsSync(reference)) {
-    return false;
-  }
-
-  // The same frame wait and capture that toHaveScreenshot makes.
+// The same frame wait and capture that toHaveScreenshot makes.
+async function screenshot(page: Page) {
   await drawFrame(page);
 
-  const screen = await page.screenshot({ animations: 'disabled', scale: 'css' });
+  return page.screenshot({ animations: 'disabled', scale: 'css' });
+}
 
-  return screen.equals(readFileSync(reference));
+// toHaveScreenshot decodes both images and compares every pixel even when they're the same file.
+async function isReferenceCopy(page: Page, reference: string) {
+  return (
+    !run.saving && existsSync(reference) && (await screenshot(page)).equals(readFileSync(reference))
+  );
 }
 
 async function compareScreens(page: Page, name: string, size: PageSize, facts: Facts) {
@@ -81,10 +79,20 @@ async function compareScreens(page: Page, name: string, size: PageSize, facts: F
 
   for (const [screen, top] of stops.entries()) {
     const file = `${name}-${screen + 1}.png`;
+    const reference = test.info().snapshotPath(file, { kind: 'screenshot' });
 
     await scrollAndHold(page, top);
 
-    if (!(await isReferenceCopy(page, file))) {
+    // Playwright captures nothing for a screen without a reference, so this keeps one for
+    // `stet accept-changes` when the page grew. The next --full compare checks it's stable.
+    if (!run.saving && !existsSync(reference)) {
+      const observed = test.info().outputPath(file);
+
+      writeFileSync(observed, await screenshot(page));
+      (facts.newScreens ??= []).push({ observed, reference });
+    }
+
+    if (!(await isReferenceCopy(page, reference))) {
       await expect.soft(page).toHaveScreenshot(file);
     }
   }

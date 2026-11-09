@@ -38,6 +38,7 @@ export interface Facts {
   gatewayErrors?: number;
   notCompared?: { right: number; bottom: number };
   record?: Observed;
+  newScreens?: Observed[];
 }
 
 function factsOf(result: TestResult): Facts {
@@ -70,7 +71,7 @@ function describe(result: TestResult) {
       compared = true;
       lines.push(`Screen ${screen?.[1] ?? '?'} never held still long enough to capture.`);
     } else if (missing) {
-      noReference.push(basename(missing[1]));
+      noReference.push(missing[1]);
     } else if (snapshot.endsWith('-size.txt')) {
       const [before, after] = [
         message.match(/^ {2}-(\S+)/m)?.[1],
@@ -130,7 +131,7 @@ function describe(result: TestResult) {
   }
 
   if (noReference.length) {
-    lines.push(`No reference for: ${noReference.join(', ')}.`);
+    lines.push(`No reference for: ${noReference.map((path) => basename(path)).join(', ')}.`);
   }
 
   const diff = result.attachments.find((attachment) => attachment.name.endsWith('-diff.png'));
@@ -152,15 +153,21 @@ function describe(result: TestResult) {
     };
   }
 
+  // Screens a grown page added are the only missing references that can be accepted, and they
+  // are a change even when every other screen still matches.
+  const added = noReference.every((path) =>
+    facts.newScreens?.some(({ reference }) => reference === path),
+  );
   let label = 'no reference';
 
-  if (changed) {
-    label = 'changed';
-  } else if (compared) {
+  // A comparison that stopped partway may have missed more, so it can't stand as a change.
+  if (compared) {
     label = failed;
+  } else if (changed || (noReference.length && added)) {
+    label = 'changed';
   }
 
-  return { label, lines, acceptable: changed && !compared && !noReference.length };
+  return { label, lines, acceptable: label === 'changed' && added };
 }
 
 // Playwright attaches each mismatch as `<name>-actual<ext>` beside `<name>-expected<ext>`, whose
@@ -173,6 +180,8 @@ function observedFiles(result: TestResult, facts: Facts) {
       observed: path ?? '',
       reference: paths.get(name.replace(/-actual(\.[^.]+)$/, '-expected$1')) ?? '',
     }));
+
+  files.push(...(facts.newScreens ?? []));
 
   if (facts.record) {
     files.push(facts.record);
