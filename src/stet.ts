@@ -10,7 +10,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
-import { siteDirs, stateRoot, type Run } from './site.ts';
+import { siteDirs, stateRoot, type Changed, type Run } from './site.ts';
 import { sizes } from './sizes.ts';
 
 interface Manifest {
@@ -28,14 +28,15 @@ const help = `Stet checks whether a change altered what a local site renders, by
   stet save-references <url> [page ...]   Save how these pages render now, at all seven sizes.
   stet compare <url> [page ...]           Compare with the references at desktop and small-phone, at rest and with hover, focus and closed details open. Never changes references.
   stet compare <url> --full               Also compare all seven sizes, every menu, tab and dialog, and real screenshots, before calling a change done.
+  stet accept-changes <url> [page ...]    Make what the last compare reported as changed on these pages their new references. Only after the user approves.
   stet list                               Show sites and pages with references.
   stet skills get core                    Print how to use Stet, written for AI agents.
 
-Pages are paths or full URLs on the same site. With none, save-references uses <url> itself, and compare uses every saved page unless <url> names one.
+Pages are paths or full URLs on the same site. With none, save-references uses <url> itself, compare uses every saved page and accept-changes every page the last compare reported, unless <url> names one.
 
   --size <name>       Only one size: ${sizeNames}.
   --replay <pattern>  With save-references, also save and replay third parties whose URL matches, such as an embedded form's scripts.
-  --user-approved     With save-references, replace pages that already have references. Only after the user approves.
+  --user-approved     Required by accept-changes, and by save-references to replace pages that already have references. Only after the user approves.
   --allow-live        Run against a site that isn't local. Only when the user asks.
 
 Exit codes: 0 nothing changed, 1 something changed or couldn't be compared, 2 the command was refused.`;
@@ -160,7 +161,7 @@ if (command === 'list') {
   process.exit(0);
 }
 
-if (command !== 'compare' && command !== 'save-references') {
+if (!['compare', 'save-references', 'accept-changes'].includes(command)) {
   refuse(`Unknown command "${command}".\n\n${help}`);
 }
 
@@ -248,6 +249,49 @@ if (!saving) {
   }
 }
 
+// Copies only what the last compare saw and reported, without capturing again, so a change at a
+// size or in a state it didn't compare still shows the next time that is compared.
+function acceptChanges() {
+  if (!values['user-approved']) {
+    refuse(
+      `Accepting a change replaces references, which hides it from every later comparison, so ask the user first. Once they approve, rerun with --user-approved.`,
+    );
+  }
+
+  const reported: Changed[] = existsSync(dirs.changed)
+    ? JSON.parse(readFileSync(dirs.changed, 'utf8'))
+    : [];
+  const changed = reported.filter(({ size }) => !values.size || size === values.size);
+  const unseen = named.filter((page) => !changed.some((entry) => entry.page === page));
+
+  if (!changed.length || unseen.length) {
+    refuse(
+      `The last compare of ${site.origin} reported no change that can be accepted${unseen.length ? ` on ${unseen.join(' ')}` : ''}${values.size ? ` at ${values.size}` : ''}. Run stet compare first. Changes that couldn't be compared, or pages without references, can't be accepted.`,
+    );
+  }
+
+  const accepted = named.length ? changed.filter(({ page }) => named.includes(page)) : changed;
+
+  for (const { files } of accepted) {
+    for (const { observed, reference } of files) {
+      cpSync(observed, reference);
+    }
+  }
+
+  writeFileSync(
+    dirs.changed,
+    JSON.stringify(reported.filter((entry) => !accepted.includes(entry))),
+  );
+  console.log(
+    `References now match what the last compare saw on ${[...new Set(accepted.map(({ page }) => page))].join(' ')}. Sizes, states and screens it didn't compare keep their old references.`,
+  );
+}
+
+if (command === 'accept-changes') {
+  acceptChanges();
+  process.exit(0);
+}
+
 // Patterns add up, because replacing one would block what other saved pages recorded under it.
 let replay = values.replay ?? manifest?.replay;
 
@@ -267,6 +311,10 @@ if (values.size) {
 if (saving) {
   rmSync(dirs.candidate, { recursive: true, force: true });
 }
+
+// Playwright empties the results only once it starts, so a run that fails before then must not
+// leave an earlier comparison to accept.
+rmSync(dirs.changed, { force: true });
 
 const result = spawnSync(join(root, 'node_modules/.bin/playwright'), args, {
   cwd: root,

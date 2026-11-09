@@ -110,15 +110,7 @@ for (const path of run.pages) {
     await makeRepeatable(page);
 
     try {
-      const response = await openPage(page, path, gatewayErrors, info.parallelIndex);
-
-      expect(response?.ok(), `${path} returned ${response?.status()}`).toBe(true);
-      // A site may redirect unknown addresses home, which would save the wrong page as this
-      // page's reference.
-      expect(
-        response?.request().redirectedFrom(),
-        `${path} redirected to ${page.url()}`,
-      ).toBeNull();
+      await openPage(page, path, gatewayErrors, info.parallelIndex);
 
       // Finishing an animation can change the page's height, so settle before measuring it.
       await scrollAndHold(page, 0);
@@ -165,6 +157,17 @@ for (const path of run.pages) {
         mkdirSync(dirname(recordFile), { recursive: true });
         writeFileSync(recordFile, gzipSync(JSON.stringify({ rest, states } satisfies SavedRecord)));
       } else if (saved) {
+        // Kept by `stet accept-changes`, so later failures are explained against what was
+        // accepted. Without --full the controls weren't driven, so the saved ones stay.
+        const observed = info.outputPath(`${name}-record.json.gz`);
+        const kept = every ? [] : saved.states.filter(({ group }) => group === 'control');
+
+        writeFileSync(
+          observed,
+          gzipSync(JSON.stringify({ rest, states: [...states, ...kept] } satisfies SavedRecord)),
+        );
+        facts.record = { observed, reference: recordFile };
+
         const compared = every
           ? saved.states
           : saved.states.filter(({ group }) => group === 'pool');

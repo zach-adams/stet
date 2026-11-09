@@ -34,6 +34,14 @@ Stet compares what a local site renders with references saved from a known-good 
    stet compare https://site.test --full
    ```
 
+4. When the user approves a reported change as intended, accept it:
+
+   ```bash
+   stet accept-changes https://site.test /about/ --user-approved
+   ```
+
+   This makes what the last compare saw on those pages their references, so the next compare shows only what changed after it. It captures nothing. What that compare didn't cover keeps its old references, so after accepting a default compare, `--full` still shows the change at the other sizes, in controls and on screen until you accept that run too. Prefer this to saving references again, which captures every size and control and would take in changes nobody was shown.
+
 Exit 0 means nothing changed in what was compared. Exit 1 means something changed or couldn't be compared, so fix it or report it. Exit 2 means the command was refused, and the message says why.
 
 ## Reading a failure
@@ -67,7 +75,7 @@ changed: /about/ at desktop
 
 ## Rules
 
-- Never pass `--user-approved` on your own. It replaces references, and an agent that replaces references can approve its own regressions. Ask the user, and use it only for the pages they approved.
+- Never pass `--user-approved` on your own. Both `accept-changes` and `save-references` use it to replace references, and an agent that replaces references can approve its own regressions. Ask the user, and use it only for the pages they approved.
 - Use `--allow-live` only when the user asks for a run against a live site.
 - Report what a pass covers. `compare` doesn't drive menus, tabs or dialogs, so say so until `--full` has passed. Neither says anything about pages you didn't save, about form submissions, about the browser's own video controls, which are hidden, or about what a report lists as blocked or not driven. `Not driven` names controls Stet found but didn't press.
 - Stet presses every control it finds, but it can't change the site: it aborts anything other than a GET request and cancels navigation.

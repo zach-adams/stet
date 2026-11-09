@@ -15,6 +15,19 @@ export interface Run {
   full: boolean;
 }
 
+/** A file a comparison saw, and the reference it differed from. */
+export interface Observed {
+  observed: string;
+  reference: string;
+}
+
+/** A page and size whose last comparison found only changes that `stet accept-changes` can keep. */
+export interface Changed {
+  page: string;
+  size: string;
+  files: Observed[];
+}
+
 export const stateRoot = join(
   process.env.XDG_STATE_HOME ?? join(homedir(), '.local/state'),
   'stet',
@@ -30,5 +43,8 @@ export function siteDirs(baseURL: string) {
     // Playwright keeps an unstable capture when overwriting a reference, so saving starts empty
     // and is promoted only if it all succeeds.
     candidate: join(state, 'references-candidate'),
+    // Playwright empties this once a run starts, not if it fails before then.
+    results: join(state, 'results'),
+    changed: join(state, 'results', 'changed.json'),
   };
 }

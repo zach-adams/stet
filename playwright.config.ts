@@ -5,7 +5,7 @@ import { sizes } from './src/sizes.ts';
 
 export default defineConfig({
   testDir: 'src',
-  outputDir: join(dirs.state, 'results'),
+  outputDir: dirs.results,
   snapshotPathTemplate: join(referencesDir, '{projectName}', '{arg}{ext}'),
   // Only `stet save-references` writes references. A missing reference fails a comparison.
   updateSnapshots: run.saving ? 'all' : 'none',

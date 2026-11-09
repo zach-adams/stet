@@ -132,7 +132,16 @@ export async function openPage(
     await loadEverything(page, gatewayErrors);
 
     if (!gatewayErrors.count()) {
-      return response;
+      // Checked on every load, so an error page can't be compared or saved as the page.
+      expect(response?.ok(), `${path} returned ${response?.status()}`).toBe(true);
+      // A site may redirect unknown addresses home, which would save the wrong page as this
+      // page's reference.
+      expect(
+        response?.request().redirectedFrom(),
+        `${path} redirected to ${page.url()}`,
+      ).toBeNull();
+
+      return;
     }
 
     if (attempt === 3) {

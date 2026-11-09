@@ -459,3 +459,31 @@ test('names the controls it ran out of reads for', async () => {
   assert.equal(status, 0, output);
   assert.match(output, /Not driven on \/_many\/, so not compared: "Extra/);
 });
+
+test('accepts only what the last compare reported, and only once the user approves', async () => {
+  state = { ...clean, headingColor: 'rgb(200, 0, 0)' };
+
+  const changed = await compare('/', '--full');
+
+  assert.equal(changed.status, 1, changed.output);
+  assert.match(changed.output, /stet accept-changes \S+ \/ --user-approved/);
+  assert.equal((await stet('accept-changes', site(), '/')).status, 2);
+
+  const accepted = await stet('accept-changes', site(), '/', '--user-approved');
+
+  assert.equal(accepted.status, 0, accepted.output);
+  assert.equal((await compare('/', '--full')).status, 0);
+
+  // A later change is explained against what was accepted, so the accepted one isn't listed.
+  state = { ...clean, headingColor: 'rgb(200, 0, 0)', image: '#336698' };
+
+  const next = await compare('/');
+
+  assert.equal(next.status, 1, next.output);
+  assert.doesNotMatch(next.output, /#FFC80000/);
+
+  state = { ...clean };
+  await compare('/', '--full');
+  assert.equal((await stet('accept-changes', site(), '/', '--user-approved')).status, 0);
+  assert.equal((await compare('/', '--full')).status, 0);
+});

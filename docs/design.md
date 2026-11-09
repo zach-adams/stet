@@ -74,14 +74,15 @@ A site is identified by its URL. `save-references` records the pages and replay 
 
 - `compare` never writes references, and a missing reference fails.
 - `save-references` refuses to replace any page that has references without `--user-approved`. New pages don't need approval. It captures into an empty folder and promotes the result only if everything succeeds, because Playwright keeps an unstable capture when it overwrites a reference, and a failed run must not leave some references replaced.
-- There is no per-change accept, because partial updates can produce a reference no browser ever rendered. Replacement happens per page and size.
+- `accept-changes` makes what the last `compare` reported the new references, once the user approves. It copies the files that comparison saw and captures nothing, so the user approves exactly what was shown. Saving again would capture all seven sizes and every control, and take in whatever changed where that comparison didn't look. What it didn't cover keeps its old reference, so a change there still fails when it's next compared. A page and size can then hold files from two runs, which is safe because each check compares only with its own file. Results that couldn't be compared or had no reference can't be accepted, and neither can anything from an interrupted run.
+- The comparison's paint record and states are accepted with it, so later failures are explained against what was accepted. Without them, every later explanation would repeat the accepted changes, and agents diffed reports by hand to tell them apart.
 - A failed load fails before comparison, so a blank image or error page can't become an accepted reference through `compare`. That check covers the response status, redirects, visible images and fonts.
 - Saved third-party responses live with the references and change only when they do.
 - References store a hash for the paint record, not its pixels, so a page and size costs about 100 KB without screenshots, including every state. Images for a failure come from `--full`.
 
 ## Built
 
-URL-based commands, a built-in agent guide, the three checks above in every state, third-party saving and blocking, a text report that names changed layers, drawing commands, links, screens and nearby elements, and fixture tests in `tests/`.
+URL-based commands, a built-in agent guide, the three checks above in every state, third-party saving and blocking, accepting reported changes without capturing again, a text report that names changed layers, drawing commands, links, screens and nearby elements, and fixture tests in `tests/`.
 
 Capture uses six common screen sizes, plus a 768 tablet just below WordPress's 782 breakpoint, where columns stop stacking, because none of those six falls between 415 and 799. `compare` runs desktop and a 360 phone while editing, with hover, focus and open details. `compare --full` runs all seven and drives every control.
 
@@ -104,7 +105,7 @@ Capture uses six common screen sizes, plus a 768 tablet just below WordPress's 7
 
 ## Left out
 
-A layout tree verdict, generic DOM matching, per-site config files, a per-change accept command, a custom image comparator, Figma comparison, a database and an MCP server. Frame-by-frame browser control through `HeadlessExperimental.beginFrame` isn't supported on macOS, and freezing the page with `Page.setWebLifecycleState` made captures less repeatable.
+A layout tree verdict, generic DOM matching, per-site config files, accepting some of a page's changes and not others, a custom image comparator, Figma comparison, a database and an MCP server. Frame-by-frame browser control through `HeadlessExperimental.beginFrame` isn't supported on macOS, and freezing the page with `Page.setWebLifecycleState` made captures less repeatable.
 
 ## Known limits
 

@@ -1,3 +1,4 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 import { stripVTControlCharacters } from 'node:util';
 import type {
@@ -9,7 +10,8 @@ import type {
   TestError,
   TestResult,
 } from '@playwright/test/reporter';
-import { run } from './run.ts';
+import { dirs, run } from './run.ts';
+import type { Changed, Observed } from './site.ts';
 
 function count(total: number, noun: string) {
   return `${total} ${noun}${total === 1 ? '' : 's'}`;
@@ -35,6 +37,7 @@ export interface Facts {
   videos?: number;
   gatewayErrors?: number;
   notCompared?: { right: number; bottom: number };
+  record?: Observed;
 }
 
 function factsOf(result: TestResult): Facts {
@@ -145,6 +148,7 @@ function describe(result: TestResult) {
       lines: [
         `The site answered ${facts.gatewayErrors} requests with a gateway error, so it may be overloaded. Run fewer comparisons at once and try again.`,
       ],
+      acceptable: false,
     };
   }
 
@@ -156,14 +160,32 @@ function describe(result: TestResult) {
     label = failed;
   }
 
-  return { label, lines };
+  return { label, lines, acceptable: changed && !compared && !noReference.length };
+}
+
+// Playwright attaches each mismatch as `<name>-actual<ext>` beside `<name>-expected<ext>`, whose
+// path is the reference itself.
+function observedFiles(result: TestResult, facts: Facts) {
+  const paths = new Map(result.attachments.map(({ name, path }) => [name, path ?? '']));
+  const files: Observed[] = result.attachments
+    .filter(({ name }) => /-actual\.[^.]+$/.test(name))
+    .map(({ name, path }) => ({
+      observed: path ?? '',
+      reference: paths.get(name.replace(/-actual(\.[^.]+)$/, '-expected$1')) ?? '',
+    }));
+
+  if (facts.record) {
+    files.push(facts.record);
+  }
+
+  return files;
 }
 
 export default class Report implements Reporter {
   private total = 0;
   private passed = 0;
   private failed = new Map<string, number>();
-  private changedPages = new Set<string>();
+  private changed: Changed[] = [];
   private blocked = new Set<string>();
   private replayed = new Set<string>();
   private redirected = new Set<string>();
@@ -231,12 +253,12 @@ export default class Report implements Reporter {
       return;
     }
 
-    const { label, lines } = describe(result);
+    const { label, lines, acceptable } = describe(result);
 
     this.failed.set(label, (this.failed.get(label) ?? 0) + 1);
 
-    if (label === 'changed') {
-      this.changedPages.add(test.title);
+    if (acceptable && !run.saving) {
+      this.changed.push({ page: test.title, size, files: observedFiles(result, facts) });
     }
 
     console.log(`\n${label}: ${test.title} at ${size}`);
@@ -309,9 +331,23 @@ export default class Report implements Reporter {
       );
     }
 
-    if (this.changedPages.size && !run.saving) {
+    if (run.saving) {
+      return;
+    }
+
+    // An interrupted run may have stopped partway through a page, so none of it can be accepted.
+    if (result.status === 'interrupted') {
+      this.changed.length = 0;
+    }
+
+    mkdirSync(dirname(dirs.changed), { recursive: true });
+    writeFileSync(dirs.changed, JSON.stringify(this.changed));
+
+    const pages = [...new Set(this.changed.map(({ page }) => page))];
+
+    if (this.failed.has('changed')) {
       console.log(
-        `Fix what changed, or report it. If the user approves it as intended: stet save-references ${run.baseURL} ${[...this.changedPages].join(' ')} --user-approved`,
+        `Fix what changed, or report it.${pages.length ? ` If the user approves it as intended: stet accept-changes ${run.baseURL} ${pages.join(' ')} --user-approved` : ''}`,
       );
     }
   }
