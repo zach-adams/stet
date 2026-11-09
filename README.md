@@ -2,7 +2,7 @@
 
 Stet checks whether a code change altered how a website renders. You save references from a known-good copy of a local site, make your change and run `stet compare`. Stet fails if a saved page renders differently, at up to seven screen sizes and in every hover, focus, open or pressed state it can reach, and its report says what changed and where.
 
-Stet was built for refactoring WordPress themes and blocks, where the code changes and the site should look exactly the same. It's quick enough to run after each edit, and it prints its own guide for AI coding agents so they can check their work as they go. It runs on [Playwright](https://playwright.dev) and Chromium.
+Stet is built for refactors, where the code changes and the site should look exactly the same, such as moving to a new CSS framework, upgrading a component library or rewriting templates. It works with any site you can serve locally, from static HTML to a CMS or a JavaScript framework. It's quick enough to run after each edit, and it prints its own guide for AI coding agents so they can check their work as they go. It runs on [Playwright](https://playwright.dev) and Chromium.
 
 The name is the proofreading mark for "let it stand".
 
@@ -22,7 +22,7 @@ The first three checks repeat with every element hovered at once, every focusabl
 ## Requirements
 
 - [pnpm](https://pnpm.io). The repository pins the pnpm and Node versions it uses, and pnpm downloads them.
-- A site served locally, at `localhost`, `127.0.0.1` or a host ending in `.local`, `.test`, `.localhost`, `.ddev.site` or `.lndo.site`. Stet refuses any other host unless you add `--allow-live`.
+- A site served locally, at `localhost` or `127.0.0.1` on any port, or at a host ending in `.local`, `.test`, `.localhost`, `.ddev.site` or `.lndo.site`. Stet refuses any other host unless you add `--allow-live`.
 
 Stet is developed and tested on macOS.
 
@@ -47,13 +47,15 @@ If `~/.local/bin` isn't on your PATH, add it in your shell profile, or link `bin
    stet save-references https://site.test / /about/ /contact/
    ```
 
-   Stet remembers these pages. To save every published page of a WordPress site:
+   Stet remembers these pages. To save every page in a sitemap, strip the domain from each URL, because sitemaps list the live site's addresses:
 
    ```bash
-   wp post list --post_type=page --post_status=publish --field=url | xargs stet save-references https://site.test
+   curl -s https://site.test/sitemap.xml | grep -o '<loc>[^<]*' | sed -E 's|<loc>https?://[^/]*||' | xargs stet save-references https://site.test
    ```
 
-2. Make your change, then compare. This checks every saved page at desktop and a 360px phone, at rest and in its hover, focus and open states. It takes about 4 to 8 seconds per page and size.
+   If the sitemap lists other sitemaps, run this on one of those instead.
+
+2. Make your change, then compare. This checks every saved page at desktop and a 360px phone, at rest and in its hover, focus and open states. It takes about 1 to 8 seconds per page and size, depending on how long the page is and how many elements it has.
 
    ```bash
    stet compare https://site.test
@@ -80,6 +82,10 @@ If `~/.local/bin` isn't on your PATH, add it in your shell profile, or link `bin
 | 2 | Stet refused to run. The message says why. |
 
 The other commands also exit with 2 when Stet refuses them.
+
+## Dev servers and production builds
+
+Stet works with dev servers and with production builds, but save references from the same kind of server you compare against. A dev server adds its own overlays, such as Next.js's dev tools button, so references saved from a production build fail against a dev server. A production build or preview server, such as `next start`, `vite preview` or `astro preview`, gives the steadiest results, because a dev server compiles pages on demand.
 
 ## Reading a report
 

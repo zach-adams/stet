@@ -1,6 +1,6 @@
 # Stet
 
-Stet is a command-line visual regression checker for local WordPress sites. These instructions cover changing Stet. To run it against a site, read [skills/core/SKILL.md](skills/core/SKILL.md), which `stet skills get core` prints.
+Stet is a command-line visual regression checker for locally served websites. These instructions cover changing Stet. To run it against a site, read [skills/core/SKILL.md](skills/core/SKILL.md), which `stet skills get core` prints.
 
 ## Where things are
 

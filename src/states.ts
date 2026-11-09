@@ -572,7 +572,7 @@ export async function walkStates(
   }
 
   for (const [label, pool] of Object.entries(POOLS)) {
-    // A page that hides focus rings after mouse input, as some themes do, takes the clicks that
+    // A page that hides focus rings after mouse input, as some sites do, takes the clicks that
     // opened details for a mouse. A real Tab makes the focus reads keyboard use, and the forced
     // states decide what has focus.
     if (label === 'focus and press') {

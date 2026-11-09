@@ -15,7 +15,7 @@ The paint record, aria snapshot and these counts repeat in every state below, so
 
 Width and height are also compared, so a page can't shrink or grow unnoticed.
 
-All of this stays correct when a refactor changes the DOM, such as replacing a custom block with core blocks. A DOM or layout tree comparison gets both directions wrong. It passes a changed image source or SVG fill when the boxes match, and it reports a removal and an addition when a wrapper shifts index-based paths. Geometry and styles may explain a failure, but they never make one pass.
+All of this stays correct when a refactor changes the DOM, such as replacing a custom component with a library's. A DOM or layout tree comparison gets both directions wrong. It passes a changed image source or SVG fill when the boxes match, and it reports a removal and an addition when a wrapper shifts index-based paths. Geometry and styles may explain a failure, but they never make one pass.
 
 ## States
 
@@ -25,7 +25,7 @@ A walker that drives each control, reads the whole page and puts it back took 56
 
 Pooling can hide a change when elements share a state a visitor could never put them in together, so a rule loses to another that wouldn't apply at the same time. Only one element can have focus, so a focusable container and what's inside it get separate reads. Known limits has the measured rate.
 
-Transitions are off while a state is forced, because Chromium doesn't cull an element while its transform is transitioning, so a forced button could stay in the recording of a scroll position 7,000px away from it. Focus goes only on what can take focus. On anything else, the browser's own stylesheet draws a focus ring no visitor could see, which would fail a harmless added wrapper. Before the focus reads, Stet presses a real Tab and then blurs, because a page that hides focus rings after mouse input, as some themes do, takes the clicks that open details for a mouse. One such theme hid every focus ring on 23 of 50 pages that way. Forced states are filed under node ids, so the walk keeps one `DOM.getDocument` throughout, because a new one leaves the old states on with no way to clear them.
+Transitions are off while a state is forced, because Chromium doesn't cull an element while its transform is transitioning, so a forced button could stay in the recording of a scroll position 7,000px away from it. Focus goes only on what can take focus. On anything else, the browser's own stylesheet draws a focus ring no visitor could see, which would fail a harmless added wrapper. Before the focus reads, Stet presses a real Tab and then blurs, because a page that hides focus rings after mouse input, as some sites do, takes the clicks that open details for a mouse. One such site hid every focus ring on 23 of 50 pages that way. Forced states are filed under node ids, so the walk keeps one `DOM.getDocument` throughout, because a new one leaves the old states on with no way to clear them.
 
 **Finding controls.** `DOMDebugger.getEventListeners` with `depth: -1` lists every listener on the page in one call, in about a millisecond, which finds controls that have no ARIA. Markup finds the rest: `summary`, tabs, `aria-expanded`, `aria-controls`, `popovertarget` and `commandfor`.
 
@@ -56,7 +56,7 @@ Full-page screenshots are out, because they disturb the page. Measured on a real
 
 Each capture does the following, in order:
 
-1. Save or replay third-party fonts, stylesheets and images, and block third-party scripts, data requests and frames unless their URL matches `--replay`. A third party that varies between runs can't be compared. Blocking everything would remove fonts and CDN images from many sites, and scripts are what vary. Blocked form scripts remove content the theme styles, which the `--replay` hint in each save report points at.
+1. Save or replay third-party fonts, stylesheets and images, and block third-party scripts, data requests and frames unless their URL matches `--replay`. A third party that varies between runs can't be compared. Blocking everything would remove fonts and CDN images from many sites, and scripts are what vary. Blocked form scripts remove content the site styles, which the `--replay` hint in each save report points at.
 2. Load the page, starting each worker's first load half a second apart, because two local sites answered 502 at six full page loads at once and never at four. Scroll instantly to start lazy loading, run timers, and fail if a visible image or font didn't load or the page redirected. An overloaded server gets two more tries.
 3. Reset the screen with `scrollIntoView` before each scroll. When a page grows on phone emulation, scroll anchoring pans the visual viewport, and `scrollTo` can't undo that even though `scrollY` reads 0.
 4. After any change, run timers, wait for requests, finish animations, and wait for page height and scroll offsets to hold.
@@ -84,12 +84,12 @@ A site is identified by its URL. `save-references` records the pages and replay 
 
 URL-based commands, a built-in agent guide, the three checks above in every state, third-party saving and blocking, accepting reported changes without capturing again, a text report that names changed layers, drawing commands, links, screens and nearby elements, and fixture tests in `tests/`.
 
-Capture uses six common screen sizes, plus a 768 tablet just below WordPress's 782 breakpoint, where columns stop stacking, because none of those six falls between 415 and 799. `compare` runs desktop and a 360 phone while editing, with hover, focus and open details. `compare --full` runs all seven and drives every control.
+Capture uses six common screen sizes, plus a 768 tablet, because none of those six falls between 415 and 799, where many layouts switch between stacked and side-by-side columns. WordPress columns, for one, stop stacking at 782. `compare` runs desktop and a 360 phone while editing, with hover, focus and open details. `compare --full` runs all seven and drives every control.
 
 ## Next, in order
 
 1. Capture repeatedly during `save-references` to expose unstable pages. Unstable never counts as unchanged.
-2. Record provenance with each reference: theme commit, built asset hash and content snapshot identity. A theme commit alone can't identify ignored build output or database content.
+2. Record provenance with each reference: source commit, built asset hash and content snapshot identity. A commit alone can't identify ignored build output or content kept outside the repository, such as a CMS database.
 3. Add exclusions with a stated reason, printed in every report.
 4. Declare expected changes. The default is no visual change. An intended redesign lists which pages may change, and anything else fails.
 5. Add widths around each site's breakpoints.
@@ -127,5 +127,6 @@ A layout tree verdict, generic DOM matching, per-site config files, accepting so
 - Any other load that makes a local server answer 502 past the retries stops the run with a clear message instead of reporting a change.
 - A failure's explanation pairs layers by their order, so if a change reorders layers it can describe the wrong pair. This affects only the explanation, never the verdict.
 - Only Chromium runs today. Playwright's WebKit is useful coverage but isn't branded Safari.
-- Front-end parity can't show that Gutenberg markup is valid or that a setting moved into the editor. Those need separate editor checks.
+- Front-end parity can't show that content saved through a CMS editor, such as WordPress's block editor, is still valid there, or that a setting moved into the editor. Those need separate editor checks.
+- A dev server compiles pages on demand and adds its own overlays, such as Next.js's dev tools button. Astro, Next.js and Vite starter sites were stable through repeated runs against both their dev and production servers, but one of five saves made right after a Next.js dev server started missed that button, and every comparison failed until the page was saved again. Production builds never did this. References only match the kind of server they came from.
 - Playwright 1.64.1 fails to read PNGs on Node 27 alpha, so `devEngines` pins Node 24.

@@ -15,13 +15,19 @@ Stet compares what a local site renders with references saved from a known-good 
    stet save-references https://site.test / /about/ /contact/
    ```
 
-   Pages are paths or full URLs, and they're remembered. To save every published WordPress page:
+   Pages are paths or full URLs on the same site, and they're remembered. To save every page in a sitemap, strip the domain, because sitemaps list the live site's URLs. If the sitemap lists other sitemaps, use one of those:
+
+   ```bash
+   curl -s https://site.test/sitemap.xml | grep -o '<loc>[^<]*' | sed -E 's|<loc>https?://[^/]*||' | xargs stet save-references https://site.test
+   ```
+
+   Any list of paths or URLs works the same way, such as WP-CLI's on a WordPress site:
 
    ```bash
    wp post list --post_type=page --post_status=publish --field=url | xargs stet save-references https://site.test
    ```
 
-2. Compare after each edit. This covers each page at rest, with closed details open, and with every element hovered, focused and pressed. It takes about 4 to 8 seconds per page and size:
+2. Compare after each edit. This covers each page at rest, with closed details open, and with every element hovered, focused and pressed. It takes about 1 to 8 seconds per page and size, depending on the page's length and how many elements it has:
 
    ```bash
    stet compare https://site.test              # every saved page, at desktop and small-phone
@@ -77,6 +83,7 @@ changed: /about/ at desktop
 
 - Never pass `--user-approved` on your own. Both `accept-changes` and `save-references` use it to replace references, and an agent that replaces references can approve its own regressions. Ask the user, and use it only for the pages they approved.
 - Use `--allow-live` only when the user asks for a run against a live site.
+- Compare against the same kind of server the references came from. A dev server adds its own overlays, such as Next.js's dev tools button, so references saved from a production build fail against it. A production build or preview server gives the steadiest results.
 - Report what a pass covers. `compare` doesn't drive menus, tabs or dialogs, so say so until `--full` has passed. Neither says anything about pages you didn't save, about form submissions, about the browser's own video controls, which are hidden, or about what a report lists as blocked or not driven. `Not driven` names controls Stet found but didn't press.
 - Stet presses every control it finds, but it can't change the site. It aborts anything other than a GET request and cancels navigation.
 

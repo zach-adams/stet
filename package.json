@@ -2,7 +2,7 @@
   "name": "stet",
   "private": true,
   "type": "module",
-  "description": "Local visual regression checks for WordPress sites.",
+  "description": "Local visual regression checks for websites.",
   "license": "MIT",
   "bin": {
     "stet": "bin/stet"
