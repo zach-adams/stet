@@ -5,6 +5,7 @@ Stet is a command-line visual regression checker for websites. These instruction
 ## Where things are
 
 - `src/stet.ts` is the `stet` command. It reads the arguments, takes the per-site lock, manages references on disk and hands each run to Playwright Test.
+- `src/help.ts` holds the text `stet help` prints for each command and topic.
 - `src/parity.spec.ts` is the Playwright test that captures and compares one page at one size.
 - `src/capture.ts` loads a page. It saves or blocks third parties, freezes time and checks that the page loaded.
 - `src/paint.ts` reads each compositor layer's paint record and describes its drawing commands.
@@ -24,7 +25,7 @@ Stet is a command-line visual regression checker for websites. These instruction
 - Get user approval for any mask, exclusion or tolerance, and make it visible in the report.
 - Use `site.test` or `example.test` for URLs in docs, tests and examples.
 - Prefer what Playwright already provides over new code or dependencies. `src/stet.ts` only names commands, takes the per-site lock and hands them to Playwright Test.
-- Keep `skills/core/SKILL.md` and the README matching what the commands do and what they print.
+- Keep `skills/core/SKILL.md`, `src/help.ts` and the README matching what the commands do and what they print.
 
 ## Checks
 

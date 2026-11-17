@@ -99,4 +99,4 @@ stet save-references https://site.test /contact/ --replay 'hsforms' --user-appro
 
 Replayed responses stay frozen until the references are replaced, so a vendor's own change won't show.
 
-Run `stet` with no arguments for every option.
+Run `stet` with no arguments for every option, and `stet help <command>` for more about one.

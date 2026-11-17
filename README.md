@@ -37,7 +37,7 @@ mkdir -p ~/.local/bin
 ln -s "$PWD/bin/stet" ~/.local/bin/stet
 ```
 
-If `~/.local/bin` isn't on your PATH, add it in your shell profile, or link `bin/stet` into another folder that is. Then run `stet` with no arguments. It prints every command and option.
+If `~/.local/bin` isn't on your PATH, add it in your shell profile, or link `bin/stet` into another folder that is. Then run `stet` with no arguments. It prints every command and option, and `stet help <command>` explains one in more depth.
 
 ## Quick start
 
@@ -119,6 +119,7 @@ Fix a changed page size first, because a page that grows moves everything below 
 | `stet accept-changes <url> [page ...] --user-approved` | Makes what the last `compare` reported the new references, without capturing again. |
 | `stet list` | Shows the sites and pages that have references. |
 | `stet skills get core` | Prints the guide for AI agents. |
+| `stet help [topic]` | Explains a command, or `sizes`, `third-parties` or `files`. `stet <command> --help` does the same. |
 
 `--size <name>` runs a single size, and `--replay <pattern>` saves and replays a third party a page needs, such as an embedded form.
 

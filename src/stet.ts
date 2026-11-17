@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { overview, sizeNames, topics } from './help.ts';
 import { siteDirs, stateRoot, type Changed, type Run } from './site.ts';
 import { sizes } from './sizes.ts';
 
@@ -21,23 +22,6 @@ interface Manifest {
 
 const root = join(import.meta.dirname, '..');
 const skillsDir = join(root, 'skills');
-const sizeNames = sizes.map((size) => size.name).join(', ');
-
-const help = `Stet checks whether a change altered what a site renders, by comparing it with references saved from a known-good state. AI agents: run \`stet skills get core\` first.
-
-  stet save-references <url> [page ...]   Save how these pages render now, at all seven sizes.
-  stet compare <url> [page ...]           Compare with the references at desktop and small-phone, at rest and with hover, focus and closed details open. Never changes references.
-  stet compare <url> --full               Also compare all seven sizes, every menu, tab and dialog, and real screenshots, before calling a change done.
-  stet accept-changes <url> [page ...]    Make what the last compare reported as changed on these pages their new references. Only after the user approves.
-  stet list                               Show sites and pages with references.
-  stet skills get core                    Print how to use Stet, written for AI agents.
-
-Pages are paths or full URLs on the same site. With none, save-references uses <url> itself, compare uses every saved page and accept-changes every page the last compare reported, unless <url> names one.
-
-  --size <name>       Only one size: ${sizeNames}.
-  --replay <pattern>  With save-references, also save and replay third parties whose URL matches, such as an embedded form's scripts.
-  --user-approved     Required by accept-changes, and by save-references to replace pages that already have references. Only after the user approves.
-Exit codes: 0 nothing changed, 1 something changed or couldn't be compared, 2 the command was refused.`;
 
 function refuse(message: string): never {
   console.error(message);
@@ -58,7 +42,7 @@ function options() {
     });
   } catch (error) {
     // SAFETY: parseArgs throws an Error when the arguments are invalid.
-    return refuse(`${(error as Error).message}\n\n${help}`);
+    return refuse(`${(error as Error).message}\n\n${overview}`);
   }
 }
 
@@ -143,8 +127,15 @@ function list() {
 const { positionals, values } = options();
 const [command, address, ...rest] = positionals;
 
-if (!command || values.help) {
-  console.log(help);
+if (!command || values.help || command === 'help') {
+  const topic = command === 'help' ? address : command;
+  const text = topic ? topics.get(topic) : overview;
+
+  if (!text) {
+    refuse(`No help for "${topic}". Topics: ${[...topics.keys()].join(', ')}.`);
+  }
+
+  console.log(text);
   process.exit(0);
 }
 
@@ -159,7 +150,7 @@ if (command === 'list') {
 }
 
 if (!['compare', 'save-references', 'accept-changes'].includes(command)) {
-  refuse(`Unknown command "${command}".\n\n${help}`);
+  refuse(`Unknown command "${command}".\n\n${overview}`);
 }
 
 if (!address || !URL.canParse(address)) {

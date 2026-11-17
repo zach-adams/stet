@@ -276,6 +276,12 @@ test('prints its guide for agents', async () => {
   assert.match(output, /stet compare/);
 });
 
+test('explains each command, and refuses a topic it has no help for', async () => {
+  assert.match((await stet('compare', '--help')).output, /^stet compare <url>/);
+  assert.match((await stet('help', 'sizes')).output, /small-phone +360 x 780/);
+  assert.equal((await stet('help', 'nope')).status, 2);
+});
+
 test('saves references, remembers the pages and refuses to replace them unasked', async () => {
   const saved = await stet('save-references', site(), '/', '--size', 'desktop');
 
